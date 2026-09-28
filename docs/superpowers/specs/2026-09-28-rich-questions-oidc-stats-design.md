@@ -76,7 +76,7 @@ type Result struct {
 
 type QuestionStats struct {
     Results     []Result
-    Total       int  // selections (sum of counts)
+    Total       int  // selections (ballots for multi/ranking)
     Respondents int  // distinct participants
     NPS         *int // set for kind nps
 }
@@ -85,7 +85,7 @@ type QuestionStats struct {
 - Borda: for n options, a ballot's rank-r option (r = 1 is best) earns `n - r` points; `Score` is the sum over ballots, `AvgRank` the mean of r.
 - NPS: promoters 9–10, passives 7–8, detractors 0–6; `round(100 * (promoters − detractors) / responses)`; nil when responses == 0.
 - `poll`/`rating` keep zero-count options in original option order (existing behavior). `multi` also lists all options in order. `ranking` is ordered by `Score` desc. `open`/`wordcloud` keep top-100 count desc.
-- `Total` stays sum-of-counts; `Respondents` is `COUNT(DISTINCT participant_id)`.
+- `Total` stays sum-of-counts for single-choice kinds; for `multi`/`ranking` it is the number of ballots, so option bars read as a share of respondents. `Respondents` is `COUNT(DISTINCT participant_id)`.
 
 Update all `QuestionResults` callers: `scanQuestionRow`, `ListQuestions`, `ListFeedbackQuestions`, `questionDTO`, `AdminExportCSV`, tests.
 
@@ -155,7 +155,7 @@ All new/changed handlers get Swagger annotations; `docs/` is regenerated with `t
 
 ## 5. OIDC first-run setup
 
-- `/admin` setup screen (when `needs_setup`) calls `/api/auth/oidc/status`; if enabled it shows a **"Sign in with OIDC"** button next to the local admin form.
+- `/admin` setup screen (when `needs_setup`) calls `/api/auth/oidc/status`; if enabled it shows a **"Sign in with OIDC"** button next to the local admin form (the login screen shows the same button for returning users).
 - Callback policy:
   - `CountUsers() == 0` → create user from OIDC email (`role=admin`), session, redirect `/admin`.
   - Known user (match by username/email) → session, redirect `/admin`.
@@ -185,6 +185,7 @@ All new/changed handlers get Swagger annotations; `docs/` is regenerated with `t
 
 - `event` summary: id, code, name, status, participants, answered participants, response rate (%), answers, questions, Q&A, votes;
 - `questions []QuestionDTO` (with results, respondents, NPS);
+- `feedback []QuestionDTO` (feedback question results);
 - feedback completion: participants who answered ≥1 feedback question + percentage of participants.
 
 Definitions: `answered participants` = distinct participants with ≥1 answer; response rate = answered/participants (0 when no participants).
