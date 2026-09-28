@@ -132,6 +132,8 @@
     if(name==='qa' && state.selectedId) loadQA(state.selectedId);
     if(name==='slides' && state.selectedId) loadSlides(state.selectedId);
     if(name==='results' && state.selectedId) loadResults(state.selectedId);
+    if(name==='stats') loadStats();
+    if(name!=='stats') closeStatsStream();
   }
   navBtns.forEach(function(b){ b.addEventListener('click', function(){ setView(b.getAttribute('data-view')); }); });
 
@@ -548,6 +550,181 @@
       }
     });
   }
+
+  // stats
+  var statsSource=null;
+  function setStatsLive(on){ var el=document.getElementById('stats-live'); if(el) el.textContent='Live updates: '+(on?'on':'off'); }
+  function closeStatsStream(){ if(statsSource){ statsSource.close(); statsSource=null; } setStatsLive(false); }
+
+  function statCard(label, value, sub){
+    var card=document.createElement('div'); card.className='stat-card';
+    var v=document.createElement('div'); v.className='stat-value'; v.textContent=value;
+    var l=document.createElement('div'); l.className='stat-label'; l.textContent=label;
+    card.appendChild(v); card.appendChild(l);
+    if(sub){ var s=document.createElement('div'); s.className='stat-sub'; s.textContent=sub; card.appendChild(s); }
+    return card;
+  }
+  function donut(pctValue){
+    var pct=Math.max(0,Math.min(100,Number(pctValue)||0));
+    var ns='http://www.w3.org/2000/svg', r=24, c=2*Math.PI*r;
+    var svg=document.createElementNS(ns,'svg');
+    svg.setAttribute('viewBox','0 0 60 60'); svg.setAttribute('width','60'); svg.setAttribute('height','60');
+    var bg=document.createElementNS(ns,'circle');
+    bg.setAttribute('cx','30'); bg.setAttribute('cy','30'); bg.setAttribute('r',String(r));
+    bg.setAttribute('fill','none'); bg.setAttribute('stroke','rgba(255,255,255,.10)'); bg.setAttribute('stroke-width','7');
+    var arc=document.createElementNS(ns,'circle');
+    arc.setAttribute('cx','30'); arc.setAttribute('cy','30'); arc.setAttribute('r',String(r));
+    arc.setAttribute('fill','none'); arc.setAttribute('stroke','#A78BFA'); arc.setAttribute('stroke-width','7');
+    arc.setAttribute('stroke-linecap','round');
+    arc.setAttribute('stroke-dasharray',(c*pct/100).toFixed(2)+' '+c.toFixed(2));
+    arc.setAttribute('transform','rotate(-90 30 30)');
+    svg.appendChild(bg); svg.appendChild(arc);
+    return svg;
+  }
+  function donutCard(label, pctValue, sub){
+    var pct=Math.max(0,Math.min(100,Number(pctValue)||0));
+    var card=document.createElement('div'); card.className='stat-card';
+    var row=document.createElement('div'); row.style.display='flex'; row.style.alignItems='center'; row.style.gap='12px';
+    row.appendChild(donut(pct));
+    var box=document.createElement('div');
+    var v=document.createElement('div'); v.className='stat-value'; v.textContent=pct.toFixed(1)+'%';
+    var l=document.createElement('div'); l.className='stat-label'; l.textContent=label;
+    box.appendChild(v); box.appendChild(l); row.appendChild(box); card.appendChild(row);
+    if(sub){ var s=document.createElement('div'); s.className='stat-sub'; s.textContent=sub; card.appendChild(s); }
+    return card;
+  }
+  function renderGlobalStats(t){
+    var root=document.getElementById('stats-global'); root.textContent='';
+    var items=[
+      ['Events', t.events||0],
+      ['Participants', t.participants||0],
+      ['Answers', t.answers||0],
+      ['Questions', t.questions||0],
+      ['Q&A', t.qa||0],
+      ['Votes', t.votes||0]
+    ];
+    items.forEach(function(it){ root.appendChild(statCard(it[0], it[1], null)); });
+  }
+  function renderStatsEvents(list){
+    var root=document.getElementById('stats-events'); root.textContent='';
+    if(!list.length){ root.textContent='No events yet.'; return; }
+    list.forEach(function(ev){
+      var row=document.createElement('div'); row.className='q-row'; row.style.marginTop='8px';
+      var head=document.createElement('div'); head.style.display='flex'; head.style.justifyContent='space-between'; head.style.gap='10px'; head.style.flexWrap='wrap';
+      var name=document.createElement('strong'); name.textContent=ev.name;
+      var meta=document.createElement('span'); meta.style.color='var(--muted)'; meta.style.fontSize='.82rem';
+      meta.textContent=ev.code+' · '+ev.status+' · '+(ev.participants||0)+' participants · '+(ev.answers||0)+' answers · '+(ev.qa||0)+' Q&A';
+      head.appendChild(name); head.appendChild(meta);
+      var lbl=document.createElement('div'); lbl.className='stat-sub';
+      lbl.textContent='Response rate '+Math.round((ev.response_rate||0)*10)/10+'% · '+(ev.answered||0)+' of '+(ev.participants||0)+' answered';
+      var track=document.createElement('div'); track.className='stat-bar';
+      var fill=document.createElement('i'); fill.style.width=Math.max(0,Math.min(100,ev.response_rate||0))+'%'; track.appendChild(fill);
+      var btn=document.createElement('button'); btn.className='btn btn-ghost btn-small'; btn.type='button'; btn.textContent='Open stats';
+      btn.addEventListener('click', function(){ selectEvent(ev.id); setView('stats'); });
+      row.appendChild(head); row.appendChild(lbl); row.appendChild(track); row.appendChild(btn);
+      root.appendChild(row);
+    });
+  }
+  function fillStatsEventSelect(list){
+    var sel=document.getElementById('stats-event-select'); sel.textContent='';
+    if(!list.length){ var o=document.createElement('option'); o.value=''; o.textContent='No events'; sel.appendChild(o); return; }
+    list.forEach(function(ev){
+      var o=document.createElement('option'); o.value=String(ev.id); o.textContent=ev.name+' · '+ev.code; sel.appendChild(o);
+    });
+    if(state.selectedId && list.some(function(ev){return ev.id===state.selectedId})) sel.value=String(state.selectedId);
+  }
+  function statsQuestionCard(q){
+    var card=document.createElement('div'); card.className='glass card-pad';
+    var title=document.createElement('div'); title.style.fontWeight='700'; title.textContent=q.prompt;
+    var meta=document.createElement('div'); meta.style.color='var(--muted)'; meta.style.fontSize='.82rem';
+    meta.textContent=q.kind+(q.media_type?' · '+q.media_type:'')+' · '+(q.respondents||0)+' respondents · '+(q.total||0)+' responses';
+    card.appendChild(title); card.appendChild(meta);
+    if(q.kind==='nps' && typeof q.nps==='number'){
+      var nps=document.createElement('div'); nps.style.fontWeight='700'; nps.style.marginTop='8px'; nps.textContent='NPS score: '+q.nps;
+      card.appendChild(nps);
+    }
+    if(q.results && q.results.length){
+      var maxScore=0;
+      if(q.kind==='ranking'){ maxScore=Math.max.apply(null,q.results.map(function(x){return x.score||0})); }
+      var wrap=document.createElement('div'); wrap.style.display='grid'; wrap.style.gap='8px'; wrap.style.marginTop='10px';
+      q.results.forEach(function(r){
+        var row=document.createElement('div'); row.style.display='grid'; row.style.gap='4px';
+        var head=document.createElement('div'); head.style.display='flex'; head.style.justifyContent='space-between'; head.style.fontSize='.86rem';
+        var lab=document.createElement('strong'); lab.textContent=r.label;
+        var cnt=document.createElement('span'); cnt.style.color='var(--muted)';
+        if(q.kind==='ranking' && typeof r.score==='number'){ cnt.textContent=r.count+' ballots · '+r.score+' pts · avg '+(r.avg_rank||0).toFixed(2); }
+        else { cnt.textContent=r.count + (q.total?' · '+Math.round(r.count/q.total*100)+'%':''); }
+        head.appendChild(lab); head.appendChild(cnt);
+        var track=document.createElement('div'); track.className='stat-bar';
+        var fill=document.createElement('i');
+        var pct=0;
+        if(q.kind==='ranking'){ pct = maxScore>0 ? (r.score||0)/maxScore*100 : 0; }
+        else { pct = q.total ? (r.count/q.total*100) : 0; }
+        fill.style.width=pct+'%'; track.appendChild(fill);
+        row.appendChild(head); row.appendChild(track); wrap.appendChild(row);
+      });
+      card.appendChild(wrap);
+    }
+    return card;
+  }
+  function renderStatsEvent(j){
+    var ev=(j&&j.event)||{};
+    var cards=document.getElementById('stats-event-cards'); cards.textContent='';
+    cards.appendChild(statCard('Participants', ev.participants||0, null));
+    cards.appendChild(donutCard('Answered', ev.response_rate||0, (ev.answered||0)+' of '+(ev.participants||0)+' participants'));
+    cards.appendChild(statCard('Answers', ev.answers||0, null));
+    cards.appendChild(statCard('Questions', ev.questions||0, null));
+    cards.appendChild(statCard('Q&A', ev.qa||0, (ev.votes||0)+' votes'));
+    cards.appendChild(donutCard('Feedback', ev.feedback_rate||0, (ev.feedback_answered||0)+' of '+(ev.participants||0)+' participants'));
+    var qroot=document.getElementById('stats-questions'); qroot.textContent='';
+    var qs=(j&&j.questions)||[];
+    if(!qs.length) qroot.textContent='No questions yet.';
+    else qs.forEach(function(q){ qroot.appendChild(statsQuestionCard(q)); });
+    var froot=document.getElementById('stats-feedback'); froot.textContent='';
+    var fb=(j&&j.feedback)||[];
+    if(!fb.length) froot.textContent='No feedback questions configured.';
+    else fb.forEach(function(q){ froot.appendChild(statsQuestionCard(q)); });
+  }
+  function loadStatsEvent(id){
+    api('/api/admin/events/'+id+'/stats').then(renderStatsEvent).catch(function(err){ toast(err.message||'Could not load event stats','err'); });
+  }
+  function loadStats(){
+    api('/api/admin/stats').then(function(j){
+      renderGlobalStats(j.totals||{});
+      var list=Array.isArray(j.per_event)?j.per_event:[];
+      renderStatsEvents(list);
+      fillStatsEventSelect(list);
+      if(state.selectedId) loadStatsEvent(state.selectedId);
+      else {
+        document.getElementById('stats-event-cards').textContent='Select an event.';
+        document.getElementById('stats-questions').textContent='';
+        document.getElementById('stats-feedback').textContent='';
+      }
+    }).catch(function(err){ toast(err.message||'Could not load stats','err'); });
+  }
+  function connectStatsStream(id){
+    closeStatsStream();
+    if(!id || typeof EventSource==='undefined') return;
+    statsSource=new EventSource('/api/admin/events/'+id+'/stats/stream');
+    statsSource.addEventListener('stats', function(e){ try{ renderStatsEvent(JSON.parse(e.data)); }catch(err){} });
+    statsSource.onopen=function(){ setStatsLive(true); };
+    statsSource.onerror=function(){ setStatsLive(false); };
+  }
+  document.getElementById('btn-refresh-stats').addEventListener('click', function(){
+    loadStats();
+    if(state.selectedId) connectStatsStream(state.selectedId);
+  });
+  document.getElementById('stats-event-select').addEventListener('change', function(){
+    var id=parseInt(this.value,10)||0;
+    if(!id) return;
+    if(id!==state.selectedId){
+      state.selectedId=id;
+      updateSelectedBar();
+      renderEvents(state.events);
+    }
+    loadStatsEvent(id);
+    connectStatsStream(id);
+  });
 
   // branding / analytics / otel
   function loadBranding(){

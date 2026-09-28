@@ -328,6 +328,13 @@
   .q-row { @apply grid gap-2 p-3.5 rounded-[14px] border bg-white/[0.04] border-white/10; }
   .q-row.live { @apply border-[rgba(34,211,238,0.35)] bg-[rgba(34,211,238,0.06)]; }
   .q-row.closed { @apply opacity-75; }
+  .stat-grid { @apply grid gap-3; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+  .stat-card { @apply p-4 rounded-[14px] border bg-white/[0.04] border-white/10 grid gap-1; }
+  .stat-value { @apply text-[1.6rem] font-extrabold tracking-[-0.03em] leading-none; }
+  .stat-label { @apply text-[0.74rem] uppercase tracking-[0.08em]; color: var(--color-muted); }
+  .stat-sub { @apply text-[0.8rem]; color: var(--color-muted); }
+  .stat-bar { @apply h-[7px] rounded-full overflow-hidden; background: rgba(255,255,255,.07); }
+  .stat-bar i { @apply block h-full rounded-full; background: linear-gradient(135deg,#6366F1,#EC4899); }
   .form-row { @apply grid gap-3.5; }
   .form-row.cols2 { @apply md:grid-cols-2; }
 
