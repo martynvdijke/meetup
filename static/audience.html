@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Meetup — Live</title>
+<link rel="stylesheet" href="/tailwind.css">
+</head>
+<body class="antialiased">
+<header class="site-header" role="banner">
+  <div class="container flex items-center justify-between h-[58px] gap-4">
+    <a class="brand" href="/" aria-label="Home">
+      <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-[18px] h-[18px]"><path d="M12 3l7 4v8l-7 4-7-4V7z"/><path d="M12 11a3 3 0 100-6 3 3 0 000 6z"/><path d="M9 21c0-2 1.8-3.5 3-3.5S15 19 15 21"/></svg></span>
+      Meetup
+    </a>
+    <span class="pill live" aria-live="polite" id="live-badge">Live</span>
+  </div>
+</header>
+
+<main id="main" class="container" role="main">
+  <div class="pt-4 pb-2">
+    <h1 class="font-extrabold tracking-[-0.03em] text-[1.35rem] leading-[1.15] m-0" id="event-name">Loading…</h1>
+    <div class="text-[#9AA0B8] text-[0.84rem] mt-1 flex gap-2 flex-wrap items-center" id="event-meta"><span class="pill" id="event-code">—</span><span id="event-desc"></span></div>
+  </div>
+
+  <div class="tabs" role="tablist" aria-label="Event sections">
+    <button class="tab" role="tab" aria-selected="true" data-tab="live" id="tab-live">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg> Live
+    </button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="qa" id="tab-qa">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 11.5a8.5 8.5 0 01-12 7.7L3 21l1.8-6A8.5 8.5 0 0121 11.5z"/><path d="M8 12h8"/><path d="M8 8h5"/></svg> Q&amp;A
+    </button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="slides" id="tab-slides">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M10 13H8"/><path d="M16 17H8"/><path d="M13 13h2"/></svg> Slides
+    </button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="feedback" id="tab-feedback">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 20l-7 2 2-7a8 8 0 1112 0L12 20z"/><path d="M9 10h6"/><path d="M9 14h4"/></svg> Feedback
+    </button>
+  </div>
+
+  <div class="py-3.5 pb-10">
+    <section class="grid gap-3.5" role="tabpanel" id="panel-live" aria-labelledby="tab-live">
+      <div class="glass card-pad" id="live-card" aria-live="polite"></div>
+    </section>
+
+    <section class="grid gap-3.5 hidden" role="tabpanel" id="panel-qa" aria-labelledby="tab-qa">
+      <div class="glass card-pad">
+        <h2 class="section-title">Ask a question</h2>
+        <p class="section-sub">Be kind and concise. The host will approve it.</p>
+        <form id="qa-form" class="mt-3.5 grid gap-3">
+          <div class="field"><label for="qa-body">Your question</label><textarea id="qa-body" class="textarea" placeholder="What do you want to know?" required maxlength="500" rows="3"></textarea></div>
+          <div class="field"><label for="qa-author">Your name (optional)</label><input id="qa-author" class="input" placeholder="Anonymous" maxlength="60"></div>
+          <button class="btn btn-primary" type="submit">Submit question</button>
+        </form>
+      </div>
+      <div class="stack" id="qa-list" aria-live="polite"></div>
+    </section>
+
+    <section class="grid gap-3.5 hidden" role="tabpanel" id="panel-slides" aria-labelledby="tab-slides">
+      <div class="glass card-pad">
+        <h2 class="section-title">Slides &amp; resources</h2>
+        <p class="section-sub">Download presentations shared by the host.</p>
+        <div id="slides-list" class="mt-3.5 grid gap-2.5"></div>
+      </div>
+    </section>
+
+    <section class="grid gap-3.5 hidden" role="tabpanel" id="panel-feedback" aria-labelledby="tab-feedback">
+      <div class="glass card-pad" id="feedback-card"></div>
+    </section>
+  </div>
+</main>
+
+<div id="toast-root" aria-live="polite" aria-atomic="true"></div>
+<script src="/app.js"></script>
+</body>
+</html>

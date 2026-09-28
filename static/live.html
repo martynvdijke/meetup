@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meetup — Live Projector</title>
+<link rel="stylesheet" href="/tailwind.css">
+</head>
+<body class="antialiased">
+<div class="sticky top-0 z-20 flex items-center justify-between gap-3 px-[18px] py-2.5 bg-[rgba(7,10,20,0.7)] backdrop-blur-xl border-b border-white/10" role="banner">
+  <div class="flex items-center gap-3">
+    <span class="w-8 h-8 rounded-[9px] grid place-items-center shadow-[0_6px_18px_rgba(124,107,255,0.35)] shrink-0" style="background:linear-gradient(135deg,#6366F1,#A855F7 45%,#EC4899 75%,#22D3EE)" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" width="16" height="16"><path d="M12 3l7 4v8l-7 4-7-4V7z"/></svg></span>
+    <h1 id="event-name" class="font-extrabold text-[1rem] leading-none tracking-[-0.03em] m-0">Meetup Live</h1>
+    <span class="pill live" id="live-pill">Live</span>
+  </div>
+  <div class="flex gap-2.5 items-center">
+    <span class="font-bold text-[0.9rem] leading-none font-mono text-[#C2C7DD] bg-white/[0.06] border border-white/10 px-3 py-2 rounded-full" id="counter" aria-live="polite">— responses</span>
+    <span class="pill" id="event-code">—</span>
+  </div>
+</div>
+
+<main class="live-wrap" role="main">
+  <div class="live-stage">
+    <section class="glass p-[22px] lg:p-7" aria-live="polite" aria-atomic="true" id="prompt-section">
+      <div id="prompt-area"></div>
+      <div id="results-area" class="mt-[18px]"></div>
+      <div id="cloud-area"></div>
+    </section>
+
+    <aside class="grid gap-4" aria-label="Side panel">
+      <div class="glass qr-card">
+        <div class="font-bold tracking-[-0.03em]">Join on your phone</div>
+        <img id="qr-img" alt="QR code to join this event" src="" class="hidden">
+        <div id="qr-placeholder" class="w-[220px] h-[220px] rounded-xl bg-white/[0.06] border border-dashed border-white/10 grid place-items-center text-[#9AA0B8] text-[0.82rem]">QR loading…</div>
+        <div class="qr-url" id="qr-url">—</div>
+        <div class="text-[#9AA0B8] text-[0.78rem]">Scan or visit the link above</div>
+      </div>
+
+      <div class="glass card-pad">
+        <h2 class="font-bold tracking-[-0.03em] text-[1rem] m-0">Top questions</h2>
+        <p class="section-sub">Most up-voted from the audience</p>
+        <div id="qa-top" class="grid gap-2 mt-3"></div>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<div id="toast-root" aria-live="polite"></div>
+<div class="confetti hidden" id="confetti" aria-hidden="true"></div>
+<script src="/live.js"></script>
+</body>
+</html>

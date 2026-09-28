@@ -1,0 +1,1165 @@
+basePath: /
+definitions:
+  db.Result:
+    properties:
+      count:
+        type: integer
+      label:
+        type: string
+    type: object
+  handlers.AnalyticsDTO:
+    properties:
+      tracking_enabled:
+        type: boolean
+      umami_script_url:
+        type: string
+      umami_website_id:
+        type: string
+    type: object
+  handlers.AnswerRequest:
+    properties:
+      question_id:
+        type: integer
+      value:
+        type: string
+    type: object
+  handlers.EventDTO:
+    properties:
+      brand:
+        type: string
+      code:
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      event_date:
+        type: string
+      feedback_open:
+        type: boolean
+      id:
+        type: integer
+      name:
+        type: string
+      pending_qa_count:
+        type: integer
+      question_count:
+        type: integer
+      status:
+        type: string
+    type: object
+  handlers.FeedbackDTO:
+    properties:
+      open:
+        type: boolean
+      questions:
+        items:
+          $ref: '#/definitions/handlers.QuestionDTO'
+        type: array
+    type: object
+  handlers.PresentationDTO:
+    properties:
+      created_at:
+        type: string
+      filename:
+        type: string
+      id:
+        type: integer
+      size:
+        type: integer
+      speaker:
+        type: string
+      title:
+        type: string
+      url:
+        type: string
+    type: object
+  handlers.QADTO:
+    properties:
+      author:
+        type: string
+      body:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: integer
+      status:
+        type: string
+      voted:
+        type: boolean
+      votes:
+        type: integer
+    type: object
+  handlers.QARequest:
+    properties:
+      author:
+        type: string
+      body:
+        type: string
+    type: object
+  handlers.QuestionDTO:
+    properties:
+      answered:
+        type: boolean
+      created_at:
+        type: string
+      event_id:
+        type: integer
+      id:
+        type: integer
+      is_feedback:
+        type: boolean
+      kind:
+        type: string
+      mode:
+        type: string
+      my_answer:
+        type: string
+      options:
+        items:
+          type: string
+        type: array
+      position:
+        type: integer
+      prompt:
+        type: string
+      results:
+        items:
+          $ref: '#/definitions/db.Result'
+        type: array
+      show_results:
+        type: boolean
+      status:
+        type: string
+      total:
+        type: integer
+    type: object
+  handlers.StateDTO:
+    properties:
+      active_question:
+        $ref: '#/definitions/handlers.QuestionDTO'
+      event:
+        $ref: '#/definitions/handlers.EventDTO'
+      feedback:
+        $ref: '#/definitions/handlers.FeedbackDTO'
+      qa:
+        items:
+          $ref: '#/definitions/handlers.QADTO'
+        type: array
+    type: object
+info:
+  contact: {}
+  description: 'Audience interaction API for meetups: live questions, Q&A board, word
+    clouds, feedback, presentations, QR codes and admin console. Audience requests
+    get an anonymous participant cookie automatically.'
+  title: Meetup API
+  version: "1.0"
+paths:
+  /api/admin/events:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handlers.EventDTO'
+            type: array
+      security:
+      - CookieAuth: []
+      summary: List events
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: event payload
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties:
+            type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.EventDTO'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - CookieAuth: []
+      summary: Create event
+      tags:
+      - admin
+  /api/admin/events/{id}:
+    delete:
+      parameters:
+      - description: event id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: no content
+      security:
+      - CookieAuth: []
+      summary: Delete event
+      tags:
+      - admin
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: event id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.EventDTO'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - CookieAuth: []
+      summary: Update event
+      tags:
+      - admin
+  /api/admin/events/{id}/export.csv:
+    get:
+      parameters:
+      - description: event id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - text/csv
+      responses:
+        "200":
+          description: csv
+          schema:
+            type: string
+      security:
+      - CookieAuth: []
+      summary: Export CSV
+      tags:
+      - admin
+  /api/admin/events/{id}/presentations:
+    get:
+      parameters:
+      - description: event id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handlers.PresentationDTO'
+            type: array
+      security:
+      - CookieAuth: []
+      summary: List presentations
+      tags:
+      - admin
+    post:
+      consumes:
+      - multipart/form-data
+      parameters:
+      - description: event id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: title
+        in: formData
+        name: title
+        type: string
+      - description: speaker
+        in: formData
+        name: speaker
+        type: string
+      - description: presentation
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.PresentationDTO'
+      security:
+      - CookieAuth: []
+      summary: Upload presentation
+      tags:
+      - admin
+  /api/admin/events/{id}/presentations/{pid}:
+    delete:
+      parameters:
+      - description: event id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: presentation id
+        in: path
+        name: pid
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: no content
+      security:
+      - CookieAuth: []
+      summary: Delete presentation
+      tags:
+      - admin
+  /api/admin/events/{id}/qa:
+    get:
+      parameters:
+      - description: event id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handlers.QADTO'
+            type: array
+      security:
+      - CookieAuth: []
+      summary: List Q&A
+      tags:
+      - admin
+  /api/admin/events/{id}/qa/{qid}:
+    delete:
+      parameters:
+      - description: event id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: qa id
+        in: path
+        name: qid
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: no content
+      security:
+      - CookieAuth: []
+      summary: Delete Q&A
+      tags:
+      - admin
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: event id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: qa id
+        in: path
+        name: qid
+        required: true
+        type: integer
+      - description: status payload
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties:
+            type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: boolean
+            type: object
+      security:
+      - CookieAuth: []
+      summary: Update Q&A status
+      tags:
+      - admin
+  /api/admin/events/{id}/questions:
+    get:
+      parameters:
+      - description: event id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handlers.QuestionDTO'
+            type: array
+      security:
+      - CookieAuth: []
+      summary: List questions
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: event id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: question payload
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.QuestionDTO'
+      security:
+      - CookieAuth: []
+      summary: Create question
+      tags:
+      - admin
+  /api/admin/events/{id}/questions/{qid}:
+    delete:
+      parameters:
+      - description: event id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: question id
+        in: path
+        name: qid
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: no content
+      security:
+      - CookieAuth: []
+      summary: Delete question
+      tags:
+      - admin
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: event id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: question id
+        in: path
+        name: qid
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.QuestionDTO'
+      security:
+      - CookieAuth: []
+      summary: Update question
+      tags:
+      - admin
+  /api/admin/events/{id}/questions/{qid}/activate:
+    post:
+      parameters:
+      - description: event id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: question id
+        in: path
+        name: qid
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.QuestionDTO'
+      security:
+      - CookieAuth: []
+      summary: Activate question
+      tags:
+      - admin
+  /api/admin/events/{id}/questions/{qid}/close:
+    post:
+      parameters:
+      - description: event id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: question id
+        in: path
+        name: qid
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.QuestionDTO'
+      security:
+      - CookieAuth: []
+      summary: Close question
+      tags:
+      - admin
+  /api/admin/otel/status:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - CookieAuth: []
+      summary: OTel status
+      tags:
+      - admin
+  /api/admin/settings/analytics:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.AnalyticsDTO'
+      security:
+      - CookieAuth: []
+      summary: Get analytics settings
+      tags:
+      - admin
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: analytics payload
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.AnalyticsDTO'
+      security:
+      - CookieAuth: []
+      summary: Update analytics settings
+      tags:
+      - admin
+  /api/admin/settings/branding:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - CookieAuth: []
+      summary: Get branding
+      tags:
+      - admin
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: brand payload
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties:
+            type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - CookieAuth: []
+      summary: Update branding
+      tags:
+      - admin
+  /api/auth/login:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: username and password
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties:
+            type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Login
+      tags:
+      - auth
+  /api/auth/logout:
+    post:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: boolean
+            type: object
+      security:
+      - CookieAuth: []
+      summary: Logout
+      tags:
+      - auth
+  /api/auth/me:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - CookieAuth: []
+      summary: Current user
+      tags:
+      - auth
+  /api/auth/oidc/callback:
+    get:
+      produces:
+      - application/json
+      responses:
+        "302":
+          description: redirect
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: OIDC callback
+      tags:
+      - auth
+  /api/auth/oidc/login:
+    get:
+      produces:
+      - application/json
+      responses:
+        "302":
+          description: redirect
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: OIDC login
+      tags:
+      - auth
+  /api/auth/oidc/logout:
+    get:
+      produces:
+      - application/json
+      responses:
+        "302":
+          description: redirect
+      summary: OIDC logout
+      tags:
+      - auth
+  /api/auth/oidc/status:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: OIDC status
+      tags:
+      - auth
+  /api/events/{code}:
+    get:
+      parameters:
+      - description: Event code
+        in: path
+        name: code
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.EventDTO'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get event
+      tags:
+      - public
+  /api/events/{code}/answers:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Event code
+        in: path
+        name: code
+        required: true
+        type: string
+      - description: answer
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.AnswerRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: boolean
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Submit answer
+      tags:
+      - public
+  /api/events/{code}/presentations:
+    get:
+      parameters:
+      - description: Event code
+        in: path
+        name: code
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handlers.PresentationDTO'
+            type: array
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: List presentations
+      tags:
+      - public
+  /api/events/{code}/presentations/{id}/download:
+    get:
+      parameters:
+      - description: Event code
+        in: path
+        name: code
+        required: true
+        type: string
+      - description: Presentation ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Download presentation
+      tags:
+      - public
+  /api/events/{code}/qa:
+    get:
+      parameters:
+      - description: Event code
+        in: path
+        name: code
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handlers.QADTO'
+            type: array
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: List public Q&A
+      tags:
+      - public
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Event code
+        in: path
+        name: code
+        required: true
+        type: string
+      - description: question
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.QARequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Create Q&A question
+      tags:
+      - public
+  /api/events/{code}/qa/{id}/vote:
+    post:
+      parameters:
+      - description: Event code
+        in: path
+        name: code
+        required: true
+        type: string
+      - description: Q&A ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Vote Q&A
+      tags:
+      - public
+  /api/events/{code}/qr.png:
+    get:
+      parameters:
+      - description: Event code
+        in: path
+        name: code
+        required: true
+        type: string
+      produces:
+      - image/png
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get event QR code
+      tags:
+      - public
+  /api/events/{code}/state:
+    get:
+      parameters:
+      - description: Event code
+        in: path
+        name: code
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.StateDTO'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get event state
+      tags:
+      - public
+  /api/events/{code}/stream:
+    get:
+      description: 'Server-sent events stream of personalized state. Each message
+        is `event: state` with JSON StateDTO.'
+      parameters:
+      - description: Event code
+        in: path
+        name: code
+        required: true
+        type: string
+      produces:
+      - text/event-stream
+      responses:
+        "200":
+          description: text/event-stream
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Stream event state
+      tags:
+      - public
+  /api/settings/analytics:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.AnalyticsDTO'
+      summary: Get analytics settings
+      tags:
+      - public
+  /api/setup:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: username and password
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties:
+            type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: boolean
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Initial setup
+      tags:
+      - auth
+  /api/setup/status:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: boolean
+            type: object
+      summary: Setup status
+      tags:
+      - auth
+securityDefinitions:
+  CookieAuth:
+    description: Admin session cookie (meetup_session) issued by POST /api/auth/login
+      or the OIDC flow.
+    in: header
+    name: Cookie
+    type: apiKey
+swagger: "2.0"
