@@ -541,6 +541,49 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/admin/events/{id}/questions/media": {
+            "post": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Upload question media",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "event id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "media file",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.MediaDTO"
+                        }
+                    }
+                }
+            }
+        },
         "/api/admin/events/{id}/questions/{qid}": {
             "delete": {
                 "security": [
@@ -699,6 +742,90 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/admin/events/{id}/stats": {
+            "get": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Event statistics",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Event ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.EventStatsDTO"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/admin/events/{id}/stats/stream": {
+            "get": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Stream event statistics",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Event ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.EventStatsDTO"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/admin/otel/status": {
             "get": {
                 "security": [
@@ -717,8 +844,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/handlers.OTelSettingsDTO"
                         }
                     }
                 }
@@ -844,6 +970,117 @@ const docTemplate = `{
                 "responses": {
                     "200": {
                         "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/admin/settings/otel": {
+            "get": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Get OTel settings",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.OTelSettingsDTO"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Update OTel settings",
+                "parameters": [
+                    {
+                        "description": "OTel settings",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "endpoint": {
+                                    "type": "string"
+                                },
+                                "headers": {
+                                    "type": "string"
+                                },
+                                "service_name": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.OTelSettingsDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/api/admin/stats": {
+            "get": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Global statistics",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.GlobalStatsDTO"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -1589,17 +1826,58 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/media/{name}": {
+            "get": {
+                "tags": [
+                    "public"
+                ],
+                "summary": "Get uploaded media",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "stored media file name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
         "db.Result": {
             "type": "object",
             "properties": {
+                "avg_rank": {
+                    "type": "number"
+                },
                 "count": {
                     "type": "integer"
                 },
                 "label": {
                     "type": "string"
+                },
+                "score": {
+                    "description": "Score and AvgRank are only set for ranking questions.",
+                    "type": "number"
                 }
             }
         },
@@ -1666,6 +1944,70 @@ const docTemplate = `{
                 }
             }
         },
+        "handlers.EventStatsDTO": {
+            "type": "object",
+            "properties": {
+                "event": {
+                    "$ref": "#/definitions/handlers.EventStatsSummaryDTO"
+                },
+                "feedback": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handlers.QuestionDTO"
+                    }
+                },
+                "questions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handlers.QuestionDTO"
+                    }
+                }
+            }
+        },
+        "handlers.EventStatsSummaryDTO": {
+            "type": "object",
+            "properties": {
+                "answered": {
+                    "type": "integer"
+                },
+                "answers": {
+                    "type": "integer"
+                },
+                "code": {
+                    "type": "string"
+                },
+                "feedback_answered": {
+                    "type": "integer"
+                },
+                "feedback_rate": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "participants": {
+                    "type": "integer"
+                },
+                "qa": {
+                    "type": "integer"
+                },
+                "questions": {
+                    "type": "integer"
+                },
+                "response_rate": {
+                    "type": "number"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "votes": {
+                    "type": "integer"
+                }
+            }
+        },
         "handlers.FeedbackDTO": {
             "type": "object",
             "properties": {
@@ -1677,6 +2019,80 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/handlers.QuestionDTO"
                     }
+                }
+            }
+        },
+        "handlers.GlobalStatsDTO": {
+            "type": "object",
+            "properties": {
+                "per_event": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handlers.EventStatsSummaryDTO"
+                    }
+                },
+                "totals": {
+                    "$ref": "#/definitions/handlers.StatsTotalsDTO"
+                }
+            }
+        },
+        "handlers.MediaDTO": {
+            "type": "object",
+            "properties": {
+                "filename": {
+                    "type": "string"
+                },
+                "media_type": {
+                    "type": "string"
+                },
+                "size": {
+                    "type": "integer"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.OTelSettingsDTO": {
+            "type": "object",
+            "properties": {
+                "effective": {
+                    "$ref": "#/definitions/handlers.OTelValues"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "endpoint": {
+                    "type": "string"
+                },
+                "headers": {
+                    "type": "string"
+                },
+                "restart_required": {
+                    "type": "boolean"
+                },
+                "service_name": {
+                    "type": "string"
+                },
+                "source": {
+                    "$ref": "#/definitions/handlers.OTelValues"
+                },
+                "stored": {
+                    "$ref": "#/definitions/handlers.OTelValues"
+                }
+            }
+        },
+        "handlers.OTelValues": {
+            "type": "object",
+            "properties": {
+                "endpoint": {
+                    "type": "string"
+                },
+                "headers": {
+                    "type": "string"
+                },
+                "service_name": {
+                    "type": "string"
                 }
             }
         },
@@ -1764,11 +2180,20 @@ const docTemplate = `{
                 "kind": {
                     "type": "string"
                 },
+                "media_type": {
+                    "type": "string"
+                },
+                "media_url": {
+                    "type": "string"
+                },
                 "mode": {
                     "type": "string"
                 },
                 "my_answer": {
                     "type": "string"
+                },
+                "nps": {
+                    "type": "integer"
                 },
                 "options": {
                     "type": "array",
@@ -1781,6 +2206,9 @@ const docTemplate = `{
                 },
                 "prompt": {
                     "type": "string"
+                },
+                "respondents": {
+                    "type": "integer"
                 },
                 "results": {
                     "type": "array",
@@ -1816,6 +2244,29 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/handlers.QADTO"
                     }
+                }
+            }
+        },
+        "handlers.StatsTotalsDTO": {
+            "type": "object",
+            "properties": {
+                "answers": {
+                    "type": "integer"
+                },
+                "events": {
+                    "type": "integer"
+                },
+                "participants": {
+                    "type": "integer"
+                },
+                "qa": {
+                    "type": "integer"
+                },
+                "questions": {
+                    "type": "integer"
+                },
+                "votes": {
+                    "type": "integer"
                 }
             }
         }
