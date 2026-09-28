@@ -1,3 +1,19 @@
+# [1.1.0](https://github.com/martynvdijke/meetup/compare/v1.0.0...v1.1.0) (2026-09-28)
+
+
+### Bug Fixes
+
+* address code review findings ([8aa9f18](https://github.com/martynvdijke/meetup/commit/8aa9f18dd592d55879a8029fd73305bc3f7464d2))
+
+
+### Features
+
+* **analytics:** configure OpenTelemetry from admin settings ([d3d78d8](https://github.com/martynvdijke/meetup/commit/d3d78d8ef7fcf7392fd14742d1640ead0a3272f6))
+* **auth:** support OIDC in first-run setup ([2554574](https://github.com/martynvdijke/meetup/commit/2554574d648fe1021c9a0933e2fe1ce6840b8c1a))
+* **questions:** add multi, ranking, yes/no and NPS question types ([933fd7b](https://github.com/martynvdijke/meetup/commit/933fd7b9e236d4ffb5aca8fa2f524f30f965dcc8))
+* **questions:** support image and video prompt media ([ace3c98](https://github.com/martynvdijke/meetup/commit/ace3c982027395f0433b4586aff2b8dcf236870d))
+* **stats:** add admin statistics with live SSE ([6dbb4ac](https://github.com/martynvdijke/meetup/commit/6dbb4ac046dcebd7097532199f34851f31c69270))
+
 # 1.0.0 (2026-09-28)
 
 
