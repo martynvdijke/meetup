@@ -46,6 +46,8 @@
     selectedBar: document.getElementById('selected-bar'),
     selName: document.getElementById('sel-name'),
     selMeta: document.getElementById('sel-meta'),
+    btnOidcSetup: document.getElementById('btn-oidc-setup'),
+    btnOidcLogin: document.getElementById('btn-oidc-login'),
   };
 
   var state={ user:null, events:[], selectedId:null };
@@ -85,7 +87,25 @@
     api('/api/auth/logout',{method:'POST'}).then(function(){ boot(); }).catch(function(){ boot(); });
   });
 
+  // OIDC buttons: shown on the setup and login gates when enabled.
+  function initOIDC(){
+    api('/api/auth/oidc/status').then(function(j){
+      var on=!!j.enabled;
+      if(els.btnOidcSetup) els.btnOidcSetup.classList.toggle('hidden', !on);
+      if(els.btnOidcLogin) els.btnOidcLogin.classList.toggle('hidden', !on);
+    }).catch(function(){});
+  }
+
+  function oidcErrorNotice(){
+    var err=new URLSearchParams(window.location.search).get('oidc_error');
+    if(err==='unknown_user'){
+      var msg=document.getElementById('login-msg');
+      if(msg) msg.textContent='That OIDC account is not allowed to sign in. Ask an admin for access or use a local account.';
+    }
+  }
+
   function boot(){
+    initOIDC(); oidcErrorNotice();
     api('/api/setup/status').then(function(j){
       if(j.needs_setup){ showGate('setup'); return Promise.reject('setup'); }
       return api('/api/auth/me');

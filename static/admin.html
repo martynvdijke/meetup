@@ -26,6 +26,7 @@
       <div class="field"><label for="setup-user">Username</label><input id="setup-user" class="input" required autocomplete="username" maxlength="60"></div>
       <div class="field"><label for="setup-pass">Password</label><input id="setup-pass" class="input" type="password" required autocomplete="new-password" minlength="6"></div>
       <button class="btn btn-primary" type="submit">Create account &amp; continue</button>
+      <a id="btn-oidc-setup" class="btn btn-ghost hidden" href="/api/auth/oidc/login">Sign in with OIDC</a>
       <div id="setup-msg" role="status" aria-live="polite" class="text-[#9AA0B8] text-[0.88rem]"></div>
     </form>
   </div>
@@ -40,6 +41,7 @@
       <div class="field"><label for="login-user">Username</label><input id="login-user" class="input" required autocomplete="username"></div>
       <div class="field"><label for="login-pass">Password</label><input id="login-pass" class="input" type="password" required autocomplete="current-password"></div>
       <button class="btn btn-primary" type="submit">Sign in</button>
+      <a id="btn-oidc-login" class="btn btn-ghost hidden" href="/api/auth/oidc/login">Sign in with OIDC</a>
       <div id="login-msg" role="status" aria-live="polite" class="text-[#F87171] text-[0.88rem]"></div>
     </form>
   </div>

@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
+	"database/sql"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"os"
 	"strings"
@@ -194,6 +196,70 @@ func oidcScopes() []string {
 	return strings.Fields(s)
 }
 
+// errOIDCUnknownUser is returned when an unknown OIDC identity is not allowed
+// to provision an account.
+var errOIDCUnknownUser = errors.New("unknown oidc user")
+
+// oidcAdminEmails returns the comma-separated OIDC_ADMIN_EMAILS allowlist.
+func oidcAdminEmails() []string {
+	raw := strings.TrimSpace(os.Getenv("OIDC_ADMIN_EMAILS"))
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	emails := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if e := strings.ToLower(strings.TrimSpace(p)); e != "" {
+			emails = append(emails, e)
+		}
+	}
+	return emails
+}
+
+func oidcEmailAllowed(email string) bool {
+	email = strings.ToLower(strings.TrimSpace(email))
+	for _, e := range oidcAdminEmails() {
+		if e == email {
+			return true
+		}
+	}
+	return false
+}
+
+// provisionOIDCUser maps an OIDC identity to an app user.
+//
+// Policy: the first user ever becomes an admin; known users are logged in;
+// unknown users are only provisioned when their email is in OIDC_ADMIN_EMAILS.
+func provisionOIDCUser(email string) (*db.User, error) {
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return nil, errors.New("missing email")
+	}
+	u, err := db.GetUserByUsername(email)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	if u != nil {
+		return u, nil
+	}
+	n, err := db.CountUsers()
+	if err != nil {
+		return nil, err
+	}
+	if n > 0 && !oidcEmailAllowed(email) {
+		return nil, errOIDCUnknownUser
+	}
+	if _, err := db.CreateUser(email, "", "admin"); err != nil {
+		// If race (already exists), try fetch again.
+		u2, err2 := db.GetUserByUsername(email)
+		if err2 != nil || u2 == nil {
+			return nil, err
+		}
+		return u2, nil
+	}
+	return db.GetUserByUsername(email)
+}
+
 func oidcRedirectURL() string {
 	if v := strings.TrimSpace(os.Getenv("OIDC_REDIRECT_URL")); v != "" {
 		return v
@@ -374,22 +440,13 @@ func OIDCCallback(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "missing email", http.StatusBadGateway)
 		return
 	}
-	// Find-or-create user
-	u, err := db.GetUserByUsername(email)
-	if err != nil || u == nil {
-		if _, err := db.CreateUser(email, "", "admin"); err != nil {
-			// If race (already exists), try fetch again
-			u2, err2 := db.GetUserByUsername(email)
-			if err2 != nil || u2 == nil {
-				jsonError(w, "failed to create user", http.StatusInternalServerError)
-				return
-			}
-			u = u2
-		} else {
-			u, _ = db.GetUserByUsername(email)
-		}
+	// Provision (or reject) the user according to the OIDC setup policy.
+	u, err := provisionOIDCUser(email)
+	if errors.Is(err, errOIDCUnknownUser) {
+		http.Redirect(w, r, "/admin?oidc_error=unknown_user", http.StatusFound)
+		return
 	}
-	if u == nil {
+	if err != nil || u == nil {
 		jsonError(w, "failed to provision user", http.StatusInternalServerError)
 		return
 	}
