@@ -221,8 +221,10 @@
   // questions
   var qKind=document.getElementById('aq-kind');
   var qOptsWrap=document.getElementById('aq-options-wrap');
-  qKind.addEventListener('change', function(){ qOptsWrap.style.display = (qKind.value==='poll') ? '' : 'none'; });
-  qOptsWrap.style.display='';
+  var qOptionKinds=['poll','multi','ranking'];
+  function syncQuestionKind(){ qOptsWrap.style.display = qOptionKinds.indexOf(qKind.value)>=0 ? '' : 'none'; }
+  qKind.addEventListener('change', syncQuestionKind);
+  syncQuestionKind();
 
   document.getElementById('form-add-question').addEventListener('submit', function(e){
     e.preventDefault();
@@ -231,9 +233,9 @@
     var mode=document.getElementById('aq-mode').value;
     var prompt=document.getElementById('aq-prompt').value.trim();
     var optsRaw=document.getElementById('aq-options').value.trim();
-    var opts = kind==='poll' ? optsRaw.split(',').map(function(s){return s.trim()}).filter(Boolean) : [];
+    var opts = qOptionKinds.indexOf(kind)>=0 ? optsRaw.split(',').map(function(s){return s.trim()}).filter(Boolean) : [];
     if(!prompt) return;
-    if(kind==='poll' && !opts.length) return toast('Add at least one option','err');
+    if(qOptionKinds.indexOf(kind)>=0 && opts.length<2) return toast('Add at least 2 options','err');
     var payload={ kind:kind, mode:mode, prompt:prompt, options:opts, is_feedback: document.getElementById('aq-feedback').checked, show_results: document.getElementById('aq-show').checked, position: 0 };
     api('/api/admin/events/'+state.selectedId+'/questions',{method:'POST', body:JSON.stringify(payload)}).then(function(){ toast('Question added'); document.getElementById('form-add-question').reset(); document.getElementById('aq-show').checked=true; loadQuestions(state.selectedId); }).catch(function(err){ toast(err.message||'Add failed','err'); });
   });
@@ -253,7 +255,7 @@
       var left=document.createElement('div'); left.style.flex='1';
       var prompt=document.createElement('div'); prompt.style.fontWeight='700'; prompt.style.letterSpacing='-.02em'; prompt.textContent=q.prompt;
       var meta=document.createElement('div'); meta.style.color='var(--muted)'; meta.style.fontSize='.82rem'; meta.style.marginTop='4px';
-      meta.textContent = q.kind+' · '+q.mode + (q.is_feedback?' · feedback':'') + ' · '+q.status + (q.show_results?' · results visible':' · results hidden') + (q.options && q.options.length ? ' · '+q.options.join(', '):'');
+      meta.textContent = q.kind+' · '+q.mode + (q.is_feedback?' · feedback':'') + ' · '+q.status + (q.show_results?' · results visible':' · results hidden') + (q.options && q.options.length ? ' · '+q.options.join(', '):'') + (q.respondents? ' · '+q.respondents+' respondents':'');
       left.appendChild(prompt); left.appendChild(meta);
       var badge=document.createElement('span'); badge.className='badge '+(q.status==='live'?'open':''); badge.textContent=q.status;
       top.appendChild(left); top.appendChild(badge);
@@ -287,15 +289,31 @@
 
       // results mini bars
       var barWrap=document.createElement('div'); barWrap.style.display='grid'; barWrap.style.gap='6px'; barWrap.style.marginTop='8px';
+      if(q.kind==='nps' && typeof q.nps==='number'){
+        var npsRow=document.createElement('div'); npsRow.style.fontWeight='700'; npsRow.style.fontSize='.9rem'; npsRow.textContent='NPS '+q.nps;
+        barWrap.appendChild(npsRow);
+      }
       if(q.results && q.results.length){
         var total=q.total||0;
         q.results.forEach(function(r){
           var row2=document.createElement('div'); row2.style.display='flex'; row2.style.justifyContent='space-between'; row2.style.fontSize='.84rem'; row2.style.gap='10px';
           var lab=document.createElement('span'); lab.textContent=r.label; lab.style.fontWeight='600';
-          var cnt=document.createElement('span'); cnt.style.color='var(--muted)'; cnt.textContent=r.count + (total? ' · '+Math.round(r.count/total*100)+'%':'');
+          var cnt=document.createElement('span'); cnt.style.color='var(--muted)';
+          if(q.kind==='ranking' && typeof r.score==='number'){
+            cnt.textContent=r.count+' ballots · '+r.score+' pts · avg '+(r.avg_rank||0).toFixed(2);
+          }else{
+            cnt.textContent=r.count + (total? ' · '+Math.round(r.count/total*100)+'%':'');
+          }
           row2.appendChild(lab); row2.appendChild(cnt);
           var track=document.createElement('div'); track.style.height='8px'; track.style.borderRadius='999px'; track.style.background='rgba(255,255,255,.08)'; track.style.overflow='hidden';
-          var fill=document.createElement('div'); fill.style.height='100%'; fill.style.background='linear-gradient(135deg,#6366F1,#EC4899)'; fill.style.width= total? (r.count/total*100)+'%':'0%';
+          var pct = 0;
+          if(q.kind==='ranking' && q.results.length){
+            var maxScore=Math.max.apply(null, q.results.map(function(x){return x.score||0}));
+            pct = maxScore>0 ? (r.score||0)/maxScore*100 : 0;
+          }else{
+            pct = total? r.count/total*100 : 0;
+          }
+          var fill=document.createElement('div'); fill.style.height='100%'; fill.style.background='linear-gradient(135deg,#6366F1,#EC4899)'; fill.style.width= pct+'%';
           track.appendChild(fill); barWrap.appendChild(row2); barWrap.appendChild(track);
         });
       }
@@ -419,14 +437,33 @@
         }
         if(q.results && q.results.length){
           var wrap=document.createElement('div'); wrap.style.display='grid'; wrap.style.gap='8px'; wrap.style.marginTop='12px';
+          if(q.kind==='nps' && typeof q.nps==='number'){
+            var nps=document.createElement('div'); nps.style.fontWeight='700'; nps.style.marginTop='10px'; nps.style.fontSize='1rem'; nps.textContent='NPS score: '+q.nps;
+            card.appendChild(nps);
+          }
+          var maxScore=0;
+          if(q.kind==='ranking'){
+            maxScore=Math.max.apply(null, q.results.map(function(x){return x.score||0}));
+          }
           q.results.forEach(function(r){
             var row=document.createElement('div'); row.style.display='grid'; row.style.gap='4px';
             var head=document.createElement('div'); head.style.display='flex'; head.style.justifyContent='space-between'; head.style.fontSize='.88rem';
             var lab=document.createElement('strong'); lab.textContent=r.label;
-            var cnt=document.createElement('span'); cnt.style.color='var(--muted)'; cnt.textContent=r.count + (q.total? ' · '+Math.round(r.count/q.total*100)+'%':'');
+            var cnt=document.createElement('span'); cnt.style.color='var(--muted)';
+            if(q.kind==='ranking' && typeof r.score==='number'){
+              cnt.textContent=r.count+' ballots · '+r.score+' pts · avg '+(r.avg_rank||0).toFixed(2);
+            }else{
+              cnt.textContent=r.count + (q.total? ' · '+Math.round(r.count/q.total*100)+'%':'');
+            }
             head.appendChild(lab); head.appendChild(cnt);
             var track=document.createElement('div'); track.style.height='10px'; track.style.borderRadius='999px'; track.style.background='rgba(255,255,255,.07)'; track.style.overflow='hidden';
-            var fill=document.createElement('div'); fill.style.height='100%'; fill.style.background='linear-gradient(135deg,#6366F1,#EC4899)'; fill.style.width= q.total? (r.count/q.total*100)+'%':'0';
+            var pct=0;
+            if(q.kind==='ranking'){
+              pct = maxScore>0? (r.score||0)/maxScore*100 : 0;
+            }else{
+              pct = q.total? (r.count/q.total*100) : 0;
+            }
+            var fill=document.createElement('div'); fill.style.height='100%'; fill.style.background='linear-gradient(135deg,#6366F1,#EC4899)'; fill.style.width= pct+'%';
             track.appendChild(fill); row.appendChild(head); row.appendChild(track); wrap.appendChild(row);
           });
           card.appendChild(wrap);

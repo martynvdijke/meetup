@@ -29,6 +29,21 @@
   var code=getCode();
   var stateCache=null;
 
+  function parseAnswerArray(s){
+    if(!s) return [];
+    try{ var v=JSON.parse(s); return Array.isArray(v) ? v : []; }catch(e){ return []; }
+  }
+
+  function buttonGrid(options, cls, onPick){
+    var list=document.createElement('div'); list.style.cssText='display:grid;gap:10px;margin-top:16px';
+    options.forEach(function(opt){
+      var b=document.createElement('button'); b.className=cls||'option-btn'; b.type='button'; b.textContent=opt;
+      b.addEventListener('click', function(){ onPick(opt,b); });
+      list.appendChild(b);
+    });
+    return list;
+  }
+
   function initUmamiTracking(){
     fetch('/api/settings/analytics',{credentials:'same-origin'}).then(function(r){return r.json()}).then(function(j){
       if(j && j.tracking_enabled && j.umami_script_url && j.umami_website_id){
@@ -103,20 +118,18 @@
     if(active.answered){
       var th=document.createElement('div'); th.className='thanks'; th.style.marginTop='12px';
       th.innerHTML='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>';
-      var s=document.createElement('span'); s.textContent='Thanks — your answer is in. You can wait for results or keep exploring Q&A.';
+      var answerText=active.my_answer||'';
+      if(active.kind==='multi') answerText=parseAnswerArray(active.my_answer).join(', ');
+      if(active.kind==='ranking') answerText=parseAnswerArray(active.my_answer).join(' › ');
+      var s=document.createElement('span');
+      s.textContent= answerText ? ('Thanks — your answer: '+answerText+'. Wait for results or keep exploring Q&A.') : 'Thanks — your answer is in. You can wait for results or keep exploring Q&A.';
       th.appendChild(s); card.appendChild(th);
     }
 
     if(active.kind==='poll'){
       var opts=active.options||[];
       if(!active.answered){
-        var list=document.createElement('div'); list.style.display='grid'; list.style.gap='10px'; list.style.marginTop='16px';
-        opts.forEach(function(opt){
-          var b=document.createElement('button'); b.className='option-btn'; b.type='button'; b.textContent=opt;
-          b.addEventListener('click', function(){ submitAnswer(active.id, opt, b); });
-          list.appendChild(b);
-        });
-        card.appendChild(list);
+        card.appendChild(buttonGrid(opts, 'option-btn', function(opt,b){ submitAnswer(active.id, opt, b); }));
       }
       renderBars(card, active);
     } else if(active.kind==='rating'){
@@ -125,7 +138,6 @@
         for(var i=1;i<=5;i++){
           (function(v){
             var btn=document.createElement('button'); btn.className='star'; btn.type='button'; btn.setAttribute('aria-label','Rate '+v+' of 5'); btn.textContent=String(v);
-            // use star svg overlay?
             btn.addEventListener('click', function(){ submitAnswer(active.id, String(v), btn); });
             stars.appendChild(btn);
           })(i);
@@ -133,10 +145,80 @@
         card.appendChild(stars);
       }
       renderBars(card, active);
+    } else if(active.kind==='yesno'){
+      if(!active.answered){
+        card.appendChild(buttonGrid(['Yes','No'], 'option-btn', function(opt,b){ submitAnswer(active.id, opt.toLowerCase(), b); }));
+      }
+      renderBars(card, active);
+    } else if(active.kind==='nps'){
+      if(!active.answered){
+        var nwrap=document.createElement('div'); nwrap.style.cssText='display:flex;flex-wrap:wrap;gap:8px;margin-top:16px';
+        for(var n=0;n<=10;n++){
+          (function(v){
+            var b=document.createElement('button'); b.className='option-btn'; b.type='button'; b.style.minWidth='50px'; b.style.padding='12px 6px'; b.textContent=String(v);
+            b.setAttribute('aria-label','Score '+v+' out of 10');
+            b.addEventListener('click', function(){ submitAnswer(active.id, String(v), b); });
+            nwrap.appendChild(b);
+          })(n);
+        }
+        card.appendChild(nwrap);
+      }
+      if(active.show_results && active.nps!==null && active.nps!==undefined){
+        var npsBadge=document.createElement('div'); npsBadge.className='pill'; npsBadge.style.cssText='margin-top:14px;font-size:.95rem'; npsBadge.textContent='NPS '+active.nps;
+        card.appendChild(npsBadge);
+      }
+      renderBars(card, active);
+    } else if(active.kind==='multi'){
+      if(!active.answered){
+        var mform=document.createElement('form'); mform.style.cssText='display:grid;gap:10px;margin-top:16px';
+        var boxes=[];
+        (active.options||[]).forEach(function(opt){
+          var lab=document.createElement('label'); lab.className='option-btn'; lab.style.cssText='display:flex;gap:10px;align-items:center;cursor:pointer';
+          var cb=document.createElement('input'); cb.type='checkbox'; cb.value=opt;
+          var sp=document.createElement('span'); sp.textContent=opt;
+          lab.appendChild(cb); lab.appendChild(sp); boxes.push(cb); mform.appendChild(lab);
+        });
+        var mbtn=document.createElement('button'); mbtn.className='btn btn-primary'; mbtn.type='submit'; mbtn.textContent='Submit selection';
+        mform.appendChild(mbtn);
+        mform.addEventListener('submit', function(e){
+          e.preventDefault();
+          var picked=boxes.filter(function(c){return c.checked}).map(function(c){return c.value});
+          if(!picked.length){ toast('Pick at least one option','err'); return; }
+          submitAnswer(active.id, JSON.stringify(picked), mbtn);
+        });
+        card.appendChild(mform);
+      }
+      renderBars(card, active);
+    } else if(active.kind==='ranking'){
+      if(!active.answered){
+        var order=(active.options||[]).slice();
+        var rform=document.createElement('form'); rform.style.cssText='display:grid;gap:12px;margin-top:16px';
+        var rlist=document.createElement('div'); rlist.style.display='grid'; rlist.style.gap='8px';
+        function paintRank(){
+          rlist.textContent='';
+          order.forEach(function(opt, idx){
+            var row=document.createElement('div'); row.className='option-btn'; row.style.cssText='display:flex;align-items:center;gap:10px';
+            var num=document.createElement('span'); num.className='pill'; num.textContent=String(idx+1);
+            var sp=document.createElement('span'); sp.style.flex='1'; sp.textContent=opt;
+            var up=document.createElement('button'); up.type='button'; up.className='btn btn-ghost btn-small'; up.textContent='↑'; up.setAttribute('aria-label','Move '+opt+' up'); up.disabled=idx===0;
+            var down=document.createElement('button'); down.type='button'; down.className='btn btn-ghost btn-small'; down.textContent='↓'; down.setAttribute('aria-label','Move '+opt+' down'); down.disabled=idx===order.length-1;
+            up.addEventListener('click', function(){ var t=order[idx-1]; order[idx-1]=order[idx]; order[idx]=t; paintRank(); });
+            down.addEventListener('click', function(){ var t=order[idx+1]; order[idx+1]=order[idx]; order[idx]=t; paintRank(); });
+            row.appendChild(num); row.appendChild(sp); row.appendChild(up); row.appendChild(down);
+            rlist.appendChild(row);
+          });
+        }
+        paintRank();
+        var rbtn=document.createElement('button'); rbtn.className='btn btn-primary'; rbtn.type='submit'; rbtn.textContent='Submit ranking';
+        rform.appendChild(rlist); rform.appendChild(rbtn);
+        rform.addEventListener('submit', function(e){ e.preventDefault(); submitAnswer(active.id, JSON.stringify(order), rbtn); });
+        card.appendChild(rform);
+      }
+      renderRanking(card, active);
     } else if(active.kind==='open'){
       if(!active.answered){
         var form=document.createElement('form'); form.style.display='grid'; form.style.gap='10px'; form.style.marginTop='14px';
-        var ta=document.createElement('textarea'); ta.className='textarea'; ta.placeholder='Type your answer…'; ta.required=true; ta.rows=3; ta.maxLength=1000;
+        var ta=document.createElement('textarea'); ta.className='textarea'; ta.placeholder='Type your answer…'; ta.required=true; ta.rows=3; ta.maxLength=500;
         var btn=document.createElement('button'); btn.className='btn btn-primary'; btn.type='submit'; btn.textContent='Submit';
         form.appendChild(ta); form.appendChild(btn);
         form.addEventListener('submit', function(e){
@@ -150,7 +232,7 @@
     } else if(active.kind==='wordcloud'){
       if(!active.answered){
         var form2=document.createElement('form'); form2.style.display='grid'; form2.style.gap='10px'; form2.style.marginTop='14px';
-        var ta2=document.createElement('textarea'); ta2.className='textarea'; ta2.placeholder='One or two words…'; ta2.required=true; ta2.rows=2; ta2.maxLength=80;
+        var ta2=document.createElement('textarea'); ta2.className='textarea'; ta2.placeholder='One or two words…'; ta2.required=true; ta2.rows=2; ta2.maxLength=200;
         var b2=document.createElement('button'); b2.className='btn btn-primary'; b2.type='submit'; b2.textContent='Send';
         form2.appendChild(ta2); form2.appendChild(b2);
         form2.addEventListener('submit', function(e){ e.preventDefault(); if(!ta2.value.trim()) return; submitAnswer(active.id, ta2.value.trim(), b2); });
@@ -181,6 +263,26 @@
       // animate next frame
       row.appendChild(head); track.appendChild(fill); row.appendChild(track); wrap.appendChild(row);
       requestAnimationFrame(function(){ fill.style.width = pct+'%'; });
+    });
+    container.appendChild(wrap);
+  }
+
+  function renderRanking(container, active){
+    if(!active.show_results) return;
+    var res=active.results||[];
+    if(!res.length) return;
+    var max=Math.max.apply(null, res.map(function(r){return r.score||0}))||1;
+    var wrap=document.createElement('div'); wrap.className='results'; wrap.style.marginTop='14px';
+    res.forEach(function(r, idx){
+      var row=document.createElement('div'); row.className='result-row';
+      var head=document.createElement('div'); head.className='result-head';
+      var lab=document.createElement('strong'); lab.textContent=(idx+1)+'. '+r.label;
+      var cnt=document.createElement('span'); cnt.textContent=(r.score||0)+' pts · avg '+(r.avg_rank ? r.avg_rank.toFixed(1) : '0');
+      head.appendChild(lab); head.appendChild(cnt);
+      var track=document.createElement('div'); track.className='track';
+      var fill=document.createElement('div'); fill.className='fill';
+      row.appendChild(head); track.appendChild(fill); row.appendChild(track); wrap.appendChild(row);
+      requestAnimationFrame(function(){ fill.style.width=((r.score||0)/max*100)+'%'; });
     });
     container.appendChild(wrap);
   }
@@ -273,6 +375,100 @@
     });
   }
 
+  // Builds an input control for a question, used by the feedback form and
+  // anywhere else a value must be collected before submission.
+  function buildFeedbackControl(q, inputId){
+    var el=document.createElement('div'); el.style.display='grid'; el.style.gap='8px';
+    var i;
+    if(q.kind==='rating'){
+      var stars=document.createElement('div'); stars.className='stars'; stars.setAttribute('role','group'); stars.setAttribute('aria-label', q.prompt);
+      var rhidden=document.createElement('input'); rhidden.type='hidden'; rhidden.id=inputId;
+      for(i=1;i<=5;i++){
+        (function(val){
+          var b=document.createElement('button'); b.type='button'; b.className='star'; b.textContent=String(val); b.setAttribute('aria-label', val+' of 5');
+          b.addEventListener('click', function(){
+            rhidden.value=String(val);
+            Array.prototype.forEach.call(stars.querySelectorAll('.star'), function(s, idx){ s.classList.toggle('active', idx < val); });
+          });
+          stars.appendChild(b);
+        })(i);
+      }
+      el.appendChild(stars); el.appendChild(rhidden);
+      return { el:el, read:function(){return rhidden.value;}, clear:function(){ rhidden.value=''; Array.prototype.forEach.call(stars.querySelectorAll('.star'), function(s){s.classList.remove('active');}); } };
+    }
+    if(q.kind==='yesno' || q.kind==='poll'){
+      var opts = q.kind==='yesno' ? ['Yes','No'] : (q.options||[]);
+      var bhidden=document.createElement('input'); bhidden.type='hidden'; bhidden.id=inputId;
+      var grid=document.createElement('div'); grid.style.display='grid'; grid.style.gap='8px';
+      opts.forEach(function(opt){
+        var b=document.createElement('button'); b.type='button'; b.className='option-btn'; b.textContent=opt;
+        b.addEventListener('click', function(){
+          bhidden.value = q.kind==='yesno' ? opt.toLowerCase() : opt;
+          Array.prototype.forEach.call(grid.querySelectorAll('button'), function(x){ x.classList.toggle('selected', x===b); });
+        });
+        grid.appendChild(b);
+      });
+      el.appendChild(grid); el.appendChild(bhidden);
+      return { el:el, read:function(){return bhidden.value;}, clear:function(){ bhidden.value=''; Array.prototype.forEach.call(grid.querySelectorAll('button'), function(x){x.classList.remove('active');}); } };
+    }
+    if(q.kind==='nps'){
+      var nhidden=document.createElement('input'); nhidden.type='hidden'; nhidden.id=inputId;
+      var nrow=document.createElement('div'); nrow.style.cssText='display:flex;flex-wrap:wrap;gap:6px';
+      for(i=0;i<=10;i++){
+        (function(val){
+          var b=document.createElement('button'); b.type='button'; b.className='option-btn'; b.style.cssText='min-width:42px;padding:8px 4px'; b.textContent=String(val);
+          b.addEventListener('click', function(){
+            nhidden.value=String(val);
+            Array.prototype.forEach.call(nrow.querySelectorAll('button'), function(x){ x.classList.toggle('selected', x===b); });
+          });
+          nrow.appendChild(b);
+        })(i);
+      }
+      el.appendChild(nrow); el.appendChild(nhidden);
+      return { el:el, read:function(){return nhidden.value;}, clear:function(){ nhidden.value=''; Array.prototype.forEach.call(nrow.querySelectorAll('button'), function(x){x.classList.remove('active');}); } };
+    }
+    if(q.kind==='multi'){
+      var boxes=[];
+      (q.options||[]).forEach(function(opt){
+        var lab=document.createElement('label'); lab.className='option-btn'; lab.style.cssText='display:flex;gap:10px;align-items:center;cursor:pointer';
+        var cb=document.createElement('input'); cb.type='checkbox'; cb.value=opt;
+        var sp=document.createElement('span'); sp.textContent=opt;
+        lab.appendChild(cb); lab.appendChild(sp); boxes.push(cb); el.appendChild(lab);
+      });
+      return {
+        el:el,
+        read:function(){ return JSON.stringify(boxes.filter(function(c){return c.checked}).map(function(c){return c.value})); },
+        clear:function(){ boxes.forEach(function(c){c.checked=false;}); },
+        validate:function(){ return boxes.some(function(c){return c.checked}); }
+      };
+    }
+    if(q.kind==='ranking'){
+      var order=(q.options||[]).slice();
+      var touched=false;
+      var rlist=document.createElement('div'); rlist.style.display='grid'; rlist.style.gap='8px';
+      function paint(){
+        rlist.textContent='';
+        order.forEach(function(opt, idx){
+          var row=document.createElement('div'); row.className='option-btn'; row.style.cssText='display:flex;align-items:center;gap:10px';
+          var num=document.createElement('span'); num.className='pill'; num.textContent=String(idx+1);
+          var sp=document.createElement('span'); sp.style.flex='1'; sp.textContent=opt;
+          var up=document.createElement('button'); up.type='button'; up.className='btn btn-ghost btn-small'; up.textContent='↑'; up.setAttribute('aria-label','Move '+opt+' up'); up.disabled=idx===0;
+          var down=document.createElement('button'); down.type='button'; down.className='btn btn-ghost btn-small'; down.textContent='↓'; down.setAttribute('aria-label','Move '+opt+' down'); down.disabled=idx===order.length-1;
+          up.addEventListener('click', function(){ touched=true; var t=order[idx-1]; order[idx-1]=order[idx]; order[idx]=t; paint(); });
+          down.addEventListener('click', function(){ touched=true; var t=order[idx+1]; order[idx+1]=order[idx]; order[idx]=t; paint(); });
+          row.appendChild(num); row.appendChild(sp); row.appendChild(up); row.appendChild(down);
+          rlist.appendChild(row);
+        });
+      }
+      paint(); el.appendChild(rlist);
+      return { el:el, read:function(){ return touched ? JSON.stringify(order) : ''; }, clear:function(){ touched=false; } };
+    }
+    // open, wordcloud and fallback
+    var ta=document.createElement('textarea'); ta.className='textarea'; ta.id=inputId; ta.rows=3; ta.placeholder='Your answer…'; ta.maxLength = q.kind==='wordcloud' ? 200 : 500;
+    el.appendChild(ta);
+    return { el:el, read:function(){return ta.value.trim();}, clear:function(){ ta.value=''; } };
+  }
+
   function renderFeedback(feedback, eventObj){
     var card=document.getElementById('feedback-card');
     card.textContent='';
@@ -296,26 +492,8 @@
     qs.forEach(function(q){
       var wrap=document.createElement('div'); wrap.style.display='grid'; wrap.style.gap='8px';
       var label=document.createElement('label'); label.style.fontWeight='650'; label.style.letterSpacing='-.02em'; label.textContent=q.prompt; label.setAttribute('for','fb-'+q.id);
-      wrap.appendChild(label);
-      if(q.kind==='rating'){
-        var stars=document.createElement('div'); stars.className='stars'; stars.setAttribute('role','group'); stars.setAttribute('aria-label', q.prompt);
-        var hidden=document.createElement('input'); hidden.type='hidden'; hidden.id='fb-'+q.id;
-        for(var i=1;i<=5;i++){
-          (function(v){
-            var b=document.createElement('button'); b.type='button'; b.className='star'; b.textContent=String(v); b.setAttribute('aria-label', v+' of 5');
-            b.addEventListener('click', function(){
-              hidden.value=String(v);
-              Array.prototype.forEach.call(stars.querySelectorAll('.star'), function(s, idx){ s.classList.toggle('active', idx < v); });
-            });
-            stars.appendChild(b);
-          })(i);
-        }
-        wrap.appendChild(stars); wrap.appendChild(hidden);
-        states[q.id]=hidden;
-      } else {
-        var ta=document.createElement('textarea'); ta.className='textarea'; ta.id='fb-'+q.id; ta.rows=3; ta.placeholder='Your answer…'; ta.maxLength=2000;
-        wrap.appendChild(ta); states[q.id]=ta;
-      }
+      var ctl=buildFeedbackControl(q, 'fb-'+q.id);
+      wrap.appendChild(label); wrap.appendChild(ctl.el); states[q.id]=ctl;
       form.appendChild(wrap);
     });
     var submit=document.createElement('button'); submit.className='btn btn-primary'; submit.type='submit'; submit.textContent='Submit feedback';
@@ -325,15 +503,14 @@
       e.preventDefault();
       var tasks=[];
       qs.forEach(function(q){
-        var el=states[q.id]; var val=(el.value||'').trim();
+        var ctl=states[q.id];
+        if(!ctl) return;
+        if(ctl.validate && !ctl.validate()) return;
+        var val=(ctl.read()||'').trim();
         if(!val) return;
         tasks.push(fetch('/api/events/'+encodeURIComponent(code)+'/answers',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({question_id:q.id, value:val})}).then(function(r){
           if(!r.ok) throw new Error('failed '+q.id);
-          el.value=''; // clear
-          // reset stars
-          if(q.kind==='rating'){
-            var container=el.previousElementSibling; if(container) Array.prototype.forEach.call(container.querySelectorAll('.star'), function(s){ s.classList.remove('active'); });
-          }
+          ctl.clear();
         }));
       });
       if(!tasks.length){ toast('Please fill at least one field','err'); return; }

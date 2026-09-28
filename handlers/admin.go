@@ -305,6 +305,23 @@ func AdminListQuestions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, dtos)
 }
 
+// validateQuestionShape enforces per-kind option requirements.
+func validateQuestionShape(kind string, opts []string) error {
+	if !db.ValidQuestionKind(kind) {
+		return fmt.Errorf("unknown question kind")
+	}
+	switch kind {
+	case "poll", "multi", "ranking":
+		if len(opts) < 2 {
+			return fmt.Errorf("%s requires at least 2 options", kind)
+		}
+		if kind == "ranking" && len(opts) > 10 {
+			return fmt.Errorf("ranking supports at most 10 options")
+		}
+	}
+	return nil
+}
+
 // AdminCreateQuestion creates a question.
 // @Summary  Create question
 // @Tags     admin
@@ -352,8 +369,8 @@ func AdminCreateQuestion(w http.ResponseWriter, r *http.Request) {
 	if opts == nil {
 		opts = []string{}
 	}
-	if body.Kind == "poll" && len(opts) < 2 {
-		jsonError(w, "poll requires at least 2 options", http.StatusBadRequest)
+	if err := validateQuestionShape(body.Kind, opts); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if body.Position == 0 {
@@ -466,6 +483,18 @@ func AdminUpdateQuestion(w http.ResponseWriter, r *http.Request) {
 				fields["is_feedback"] = n != 0
 			}
 		}
+	}
+	effKind := q.Kind
+	if k, ok := fields["kind"].(string); ok && k != "" {
+		effKind = k
+	}
+	effOpts := q.Options
+	if o, ok := fields["options"].([]string); ok {
+		effOpts = o
+	}
+	if err := validateQuestionShape(effKind, effOpts); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 	updated, err := db.UpdateQuestion(qid, fields)
 	if err != nil {
@@ -805,7 +834,11 @@ func AdminExportCSV(w http.ResponseWriter, r *http.Request) {
 	fb, _ := db.ListFeedbackQuestions(eid)
 	all := append(qs, fb...)
 	for _, q := range all {
-		results, _, _ := db.QuestionResults(q.ID)
+		st, _ := db.GetQuestionStats(q.ID)
+		var results []db.Result
+		if st != nil {
+			results = st.Results
+		}
 		typ := "answer"
 		if q.IsFeedback {
 			typ = "feedback"

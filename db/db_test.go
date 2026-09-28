@@ -2,6 +2,7 @@ package db
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -188,7 +189,7 @@ func TestQuestionsActivateAndResults(t *testing.T) {
 	if err := ActivateQuestion(ev2.ID, q1.ID); err == nil {
 		t.Fatal("should error mismatched event")
 	}
-	// QuestionResults zero-count in option order
+	// GetQuestionStats zero-count in option order
 	p1, _ := GetOrCreateParticipant("part1", ev.ID)
 	p2, _ := GetOrCreateParticipant("part2", ev.ID)
 	UpsertAnswer(q2.ID, p1, "X")
@@ -218,12 +219,12 @@ func TestQuestionsActivateAndResults(t *testing.T) {
 	UpsertAnswer(q3.ID, p2, "world")
 	UpsertAnswer(q3.ID, p1, "hello-updated")
 	// actually p1 upsert keeps count 2; test below separately
-	res, total, _ := QuestionResults(q3.ID)
-	if total != 2 {
-		t.Fatalf("open total %d", total)
+	st, _ := GetQuestionStats(q3.ID)
+	if st.Total != 2 {
+		t.Fatalf("open total %d", st.Total)
 	}
-	if len(res) != 2 {
-		t.Fatalf("open results %v", res)
+	if len(st.Results) != 2 {
+		t.Fatalf("open results %v", st.Results)
 	}
 	// no active when none live
 	CloseQuestion(ev.ID, q2.ID)
@@ -371,6 +372,133 @@ func TestSettings(t *testing.T) {
 	b2, _ := GetBranding()
 	if b2 != "MyBrand" {
 		t.Fatalf("brand %q", b2)
+	}
+}
+
+func TestValidateAnswer(t *testing.T) {
+	opts := []string{"A", "B", "C"}
+	cases := []struct {
+		name    string
+		kind    string
+		options []string
+		raw     string
+		want    string
+		wantErr bool
+	}{
+		{"poll valid", "poll", opts, "B", "B", false},
+		{"poll invalid", "poll", opts, "Z", "", true},
+		{"multi valid", "multi", opts, `["A","C"]`, `["A","C"]`, false},
+		{"multi empty", "multi", opts, `[]`, "", true},
+		{"multi unknown", "multi", opts, `["A","Z"]`, "", true},
+		{"multi dup", "multi", opts, `["A","A"]`, "", true},
+		{"multi bad json", "multi", opts, `A`, "", true},
+		{"ranking valid", "ranking", opts, `["C","A","B"]`, `["C","A","B"]`, false},
+		{"ranking missing", "ranking", opts, `["A","B"]`, "", true},
+		{"ranking dup", "ranking", opts, `["A","A","B"]`, "", true},
+		{"yesno yes", "yesno", nil, "Yes", "yes", false},
+		{"yesno bad", "yesno", nil, "maybe", "", true},
+		{"rating valid", "rating", nil, "5", "5", false},
+		{"rating bad", "rating", nil, "0", "", true},
+		{"nps valid", "nps", nil, "10", "10", false},
+		{"nps bad", "nps", nil, "11", "", true},
+		{"open trimmed", "open", nil, " hello ", "hello", false},
+		{"open empty", "open", nil, "   ", "", true},
+		{"wordcloud too long", "wordcloud", nil, strings.Repeat("x", 201), "", true},
+		{"unknown kind", "bogus", nil, "x", "", true},
+	}
+	for _, tc := range cases {
+		got, err := ValidateAnswer(tc.kind, tc.options, tc.raw)
+		if tc.wantErr {
+			if err == nil {
+				t.Fatalf("%s: want error, got %q", tc.name, got)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatalf("%s: unexpected error %v", tc.name, err)
+		}
+		if got != tc.want {
+			t.Fatalf("%s: got %q want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestGetQuestionStats(t *testing.T) {
+	tmpDB(t)
+	ev, _ := CreateEvent("E", "C1", "", "")
+	p1, _ := GetOrCreateParticipant("p1", ev.ID)
+	p2, _ := GetOrCreateParticipant("p2", ev.ID)
+	p3, _ := GetOrCreateParticipant("p3", ev.ID)
+
+	// multi: counts per option, ballots as total
+	qm, _ := CreateQuestion(ev.ID, "multi", "live", "Pick some", []string{"A", "B", "C"}, false, true, 1)
+	UpsertAnswer(qm.ID, p1, `["A","C"]`)
+	UpsertAnswer(qm.ID, p2, `["A"]`)
+	sm, err := GetQuestionStats(qm.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sm.Total != 2 || sm.Respondents != 2 {
+		t.Fatalf("multi total %d respondents %d", sm.Total, sm.Respondents)
+	}
+	wantMulti := []int{2, 0, 1}
+	for i, want := range wantMulti {
+		if sm.Results[i].Label != []string{"A", "B", "C"}[i] || sm.Results[i].Count != want {
+			t.Fatalf("multi result %d %+v", i, sm.Results[i])
+		}
+	}
+	if sm.NPS != nil {
+		t.Fatalf("multi nps should be nil")
+	}
+
+	// ranking: Borda n-r with best rank 1, avg rank, ordered by score
+	qr, _ := CreateQuestion(ev.ID, "ranking", "live", "Rank", []string{"A", "B", "C"}, false, true, 2)
+	UpsertAnswer(qr.ID, p1, `["A","B","C"]`)
+	UpsertAnswer(qr.ID, p2, `["C","A","B"]`)
+	sr, _ := GetQuestionStats(qr.ID)
+	if sr.Total != 2 || sr.Respondents != 2 {
+		t.Fatalf("ranking total %d respondents %d", sr.Total, sr.Respondents)
+	}
+	wantRank := []struct {
+		label   string
+		score   float64
+		avgRank float64
+	}{{"A", 3, 1.5}, {"C", 2, 2}, {"B", 1, 2.5}}
+	for i, want := range wantRank {
+		r := sr.Results[i]
+		if r.Label != want.label || r.Score != want.score || r.AvgRank != want.avgRank {
+			t.Fatalf("ranking result %d %+v want %+v", i, r, want)
+		}
+	}
+
+	// nps: promoters 9-10, detractors 0-6
+	qn, _ := CreateQuestion(ev.ID, "nps", "live", "NPS", nil, false, true, 3)
+	UpsertAnswer(qn.ID, p1, "10")
+	UpsertAnswer(qn.ID, p2, "9")
+	UpsertAnswer(qn.ID, p3, "6")
+	sn, _ := GetQuestionStats(qn.ID)
+	if sn.NPS == nil || *sn.NPS != 33 {
+		t.Fatalf("nps %v", sn.NPS)
+	}
+	if len(sn.Results) != 11 || sn.Results[10].Count != 1 || sn.Results[0].Count != 0 {
+		t.Fatalf("nps distribution %+v", sn.Results)
+	}
+	if sn.Total != 3 || sn.Respondents != 3 {
+		t.Fatalf("nps total %d respondents %d", sn.Total, sn.Respondents)
+	}
+
+	// yesno without explicit options defaults to yes/no
+	qy, _ := CreateQuestion(ev.ID, "yesno", "live", "YN", nil, false, true, 4)
+	UpsertAnswer(qy.ID, p1, "yes")
+	sy, _ := GetQuestionStats(qy.ID)
+	if len(sy.Results) != 2 || sy.Results[0].Label != "yes" || sy.Results[0].Count != 1 || sy.Results[1].Label != "no" || sy.Results[1].Count != 0 {
+		t.Fatalf("yesno results %+v", sy.Results)
+	}
+
+	// unknown question returns empty stats
+	missing, err := GetQuestionStats(9999)
+	if err != nil || missing == nil || len(missing.Results) != 0 {
+		t.Fatalf("missing stats %+v err %v", missing, err)
 	}
 }
 

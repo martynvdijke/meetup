@@ -68,6 +68,8 @@ type QuestionDTO struct {
 	IsFeedback  bool        `json:"is_feedback"`
 	Results     []db.Result `json:"results"`
 	Total       int         `json:"total"`
+	Respondents int         `json:"respondents"`
+	NPS         *int        `json:"nps,omitempty"`
 	MyAnswer    string      `json:"my_answer"`
 	Answered    bool        `json:"answered"`
 	CreatedAt   string      `json:"created_at,omitempty"`
@@ -294,16 +296,21 @@ func questionDTO(q db.Question, withResults bool) QuestionDTO {
 		dto.Options = []string{}
 	}
 	if withResults {
-		results, total, err := db.QuestionResults(q.ID)
+		st, err := db.GetQuestionStats(q.ID)
 		if err != nil {
 			log.Printf("question results %d: %v", q.ID, err)
-			results, total = nil, 0
+			st = nil
 		}
-		if results == nil {
-			results = []db.Result{}
+		if st == nil {
+			st = &db.QuestionStats{Results: []db.Result{}}
 		}
-		dto.Results = results
-		dto.Total = total
+		if st.Results == nil {
+			st.Results = []db.Result{}
+		}
+		dto.Results = st.Results
+		dto.Total = st.Total
+		dto.Respondents = st.Respondents
+		dto.NPS = st.NPS
 	} else {
 		dto.Results = []db.Result{}
 	}

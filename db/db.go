@@ -4,8 +4,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	_ "modernc.org/sqlite"
 )
@@ -50,6 +54,17 @@ type Presentation struct {
 type Result struct {
 	Label string `json:"label"`
 	Count int    `json:"count"`
+	// Score and AvgRank are only set for ranking questions.
+	Score   float64 `json:"score,omitempty"`
+	AvgRank float64 `json:"avg_rank,omitempty"`
+}
+
+// QuestionStats is the aggregate result set for one question.
+type QuestionStats struct {
+	Results     []Result
+	Total       int  // responses (ballots) for multi/ranking, selections for the rest
+	Respondents int  // distinct participants who answered
+	NPS         *int // set for kind "nps"
 }
 
 type Question struct {
@@ -66,6 +81,8 @@ type Question struct {
 	CreatedAt   time.Time
 	Results     []Result `json:"results"`
 	Total       int      `json:"total"`
+	Respondents int      `json:"respondents"`
+	NPS         *int     `json:"nps,omitempty"`
 }
 
 type QAQuestion struct {
@@ -521,6 +538,18 @@ func scanQuestionRows(rows *sql.Rows) (*Question, error) {
 	return &q, nil
 }
 
+func fillQuestionStats(q *Question) {
+	st, err := GetQuestionStats(q.ID)
+	if err != nil || st == nil {
+		q.Results = []Result{}
+		return
+	}
+	q.Results = st.Results
+	q.Total = st.Total
+	q.Respondents = st.Respondents
+	q.NPS = st.NPS
+}
+
 func scanQuestionRow(row *sql.Row) (*Question, error) {
 	var q Question
 	var opts, ca string
@@ -536,9 +565,7 @@ func scanQuestionRow(row *sql.Row) (*Question, error) {
 	if q.Options == nil {
 		q.Options = []string{}
 	}
-	results, total, _ := QuestionResults(q.ID)
-	q.Results = results
-	q.Total = total
+	fillQuestionStats(&q)
 	return &q, nil
 }
 
@@ -576,9 +603,7 @@ func ListQuestions(eventID int64) ([]Question, error) {
 		return nil, err
 	}
 	for i := range out {
-		results, total, _ := QuestionResults(out[i].ID)
-		out[i].Results = results
-		out[i].Total = total
+		fillQuestionStats(&out[i])
 	}
 	return out, nil
 }
@@ -601,9 +626,7 @@ func ListFeedbackQuestions(eventID int64) ([]Question, error) {
 		return nil, err
 	}
 	for i := range out {
-		results, total, _ := QuestionResults(out[i].ID)
-		out[i].Results = results
-		out[i].Total = total
+		fillQuestionStats(&out[i])
 	}
 	return out, nil
 }
@@ -725,65 +748,361 @@ func GetActiveQuestion(eventID int64) (*Question, error) {
 	return q, err
 }
 
-func QuestionResults(questionID int64) ([]Result, int, error) {
-	// get options and kind
+// ValidQuestionKind reports whether kind is a supported question type.
+func ValidQuestionKind(kind string) bool {
+	switch kind {
+	case "poll", "multi", "ranking", "yesno", "rating", "nps", "open", "wordcloud":
+		return true
+	}
+	return false
+}
+
+// ValidateAnswer checks and normalizes a raw client answer for a question kind.
+// The returned value is the canonical string stored in the answers table.
+func ValidateAnswer(kind string, options []string, raw string) (string, error) {
+	switch kind {
+	case "poll":
+		v := strings.TrimSpace(raw)
+		for _, o := range options {
+			if v == o {
+				return o, nil
+			}
+		}
+		return "", fmt.Errorf("answer must be one of the options")
+	case "multi":
+		vals, err := parseAnswerArray(raw)
+		if err != nil {
+			return "", fmt.Errorf("answer must be a JSON array of options")
+		}
+		if len(vals) == 0 {
+			return "", fmt.Errorf("select at least one option")
+		}
+		seen := map[string]bool{}
+		out := make([]string, 0, len(vals))
+		for _, v := range vals {
+			v = strings.TrimSpace(v)
+			if seen[v] {
+				return "", fmt.Errorf("duplicate option in answer")
+			}
+			if !containsString(options, v) {
+				return "", fmt.Errorf("unknown option in answer")
+			}
+			seen[v] = true
+			out = append(out, v)
+		}
+		b, _ := json.Marshal(out)
+		return string(b), nil
+	case "ranking":
+		vals, err := parseAnswerArray(raw)
+		if err != nil {
+			return "", fmt.Errorf("answer must be a JSON array of options")
+		}
+		if len(vals) != len(options) {
+			return "", fmt.Errorf("answer must rank every option")
+		}
+		seen := map[string]bool{}
+		for _, v := range vals {
+			if !containsString(options, v) || seen[v] {
+				return "", fmt.Errorf("answer must rank every option exactly once")
+			}
+			seen[v] = true
+		}
+		b, _ := json.Marshal(vals)
+		return string(b), nil
+	case "yesno":
+		v := strings.ToLower(strings.TrimSpace(raw))
+		if v == "yes" || v == "no" {
+			return v, nil
+		}
+		return "", fmt.Errorf("answer must be yes or no")
+	case "rating":
+		v := strings.TrimSpace(raw)
+		if v == "1" || v == "2" || v == "3" || v == "4" || v == "5" {
+			return v, nil
+		}
+		return "", fmt.Errorf("answer must be a rating from 1 to 5")
+	case "nps":
+		v := strings.TrimSpace(raw)
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 || n > 10 {
+			return "", fmt.Errorf("answer must be a score from 0 to 10")
+		}
+		return v, nil
+	case "open":
+		return validateTextAnswer(raw, 500)
+	case "wordcloud":
+		return validateTextAnswer(raw, 200)
+	}
+	return "", fmt.Errorf("unknown question kind")
+}
+
+func validateTextAnswer(raw string, max int) (string, error) {
+	v := strings.TrimSpace(raw)
+	if v == "" {
+		return "", fmt.Errorf("answer is required")
+	}
+	if utf8.RuneCountInString(v) > max {
+		return "", fmt.Errorf("answer is too long")
+	}
+	return v, nil
+}
+
+func parseAnswerArray(raw string) ([]string, error) {
+	var vals []string
+	if err := json.Unmarshal([]byte(raw), &vals); err != nil {
+		return nil, err
+	}
+	return vals, nil
+}
+
+func containsString(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+// GetQuestionStats aggregates the answers for a single question.
+// Results are ordered by option order for choice kinds, by Borda score for
+// ranking, by score value for nps and by count for open/wordcloud.
+func GetQuestionStats(questionID int64) (*QuestionStats, error) {
 	var optsStr, kind string
 	err := DB.QueryRow("SELECT options, kind FROM questions WHERE id=?", questionID).Scan(&optsStr, &kind)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return []Result{}, 0, nil
+			return &QuestionStats{Results: []Result{}}, nil
 		}
-		return nil, 0, err
+		return nil, err
 	}
 	var opts []string
 	_ = json.Unmarshal([]byte(optsStr), &opts)
 
+	stats := &QuestionStats{}
+	if err := DB.QueryRow("SELECT COUNT(DISTINCT participant_id) FROM answers WHERE question_id=?", questionID).Scan(&stats.Respondents); err != nil {
+		return nil, err
+	}
+
+	switch kind {
+	case "multi":
+		return multiStats(questionID, opts, stats)
+	case "ranking":
+		return rankingStats(questionID, opts, stats)
+	case "nps":
+		return npsStats(questionID, stats)
+	}
+
 	rows, err := DB.Query("SELECT value, COUNT(*) as cnt FROM answers WHERE question_id=? GROUP BY value ORDER BY cnt DESC LIMIT 100", questionID)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	defer rows.Close()
 	countMap := map[string]int{}
-	var total int
-	var rawResults []Result
+	var raw []Result
 	for rows.Next() {
 		var val string
 		var cnt int
 		if err := rows.Scan(&val, &cnt); err != nil {
-			return nil, 0, err
+			return nil, err
 		}
 		countMap[val] = cnt
-		rawResults = append(rawResults, Result{Label: val, Count: cnt})
-		total += cnt
+		raw = append(raw, Result{Label: val, Count: cnt})
+		stats.Total += cnt
 	}
-	// For poll/rating include zero-count options in original order
-	if kind == "poll" || kind == "rating" {
-		// Need to return in option order with counts, plus any extra?
-		// Spec: also include every option with count 0 if absent, in original options order
-		// And GROUP BY ORDER BY count DESC already; but for poll/rating we want option order?
-		// Spec says "in the original options order" for zero-count ones, but overall we should
-		// return all options in original order with counts? Let's interpret: results include all options in original order, with counts.
-		// However spec also says GROUP BY value ORDER BY count DESC. For poll/rating, include every option with 0 if absent in original order.
-		// Approach: build ordered list from options, preserving option order, appending missing.
-		var ordered []Result
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	switch kind {
+	case "poll", "rating", "yesno":
+		if kind == "yesno" && len(opts) == 0 {
+			opts = []string{"yes", "no"}
+		}
+		ordered := make([]Result, 0, len(opts)+len(raw))
 		seen := map[string]bool{}
 		for _, o := range opts {
 			ordered = append(ordered, Result{Label: o, Count: countMap[o]})
 			seen[o] = true
 		}
-		// Append any extra values not in options (shouldn't happen for poll but keep)
-		for _, r := range rawResults {
+		// Append any legacy values that are not among the options.
+		for _, r := range raw {
 			if !seen[r.Label] {
 				ordered = append(ordered, r)
 			}
 		}
-		return ordered, total, nil
+		stats.Results = ordered
+	default:
+		if raw == nil {
+			raw = []Result{}
+		}
+		stats.Results = raw
 	}
-	// open/wordcloud: raw values top 100 count desc
-	if rawResults == nil {
-		rawResults = []Result{}
+	return stats, nil
+}
+
+// multiStats counts how many respondents selected each option. Total is the
+// number of ballots, so bar percentages read as "% of respondents".
+func multiStats(questionID int64, opts []string, stats *QuestionStats) (*QuestionStats, error) {
+	rows, err := DB.Query("SELECT value FROM answers WHERE question_id=?", questionID)
+	if err != nil {
+		return nil, err
 	}
-	return rawResults, total, nil
+	defer rows.Close()
+	counts := map[string]int{}
+	ballots := 0
+	for rows.Next() {
+		var val string
+		if err := rows.Scan(&val); err != nil {
+			return nil, err
+		}
+		var chosen []string
+		if err := json.Unmarshal([]byte(val), &chosen); err != nil {
+			continue
+		}
+		ballots++
+		for _, c := range chosen {
+			counts[c]++
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	stats.Total = ballots
+	stats.Results = orderedResults(opts, counts)
+	return stats, nil
+}
+
+// rankingStats computes Borda points (n-rank, best rank = 1) and the average
+// rank per option, ordered by score descending.
+func rankingStats(questionID int64, opts []string, stats *QuestionStats) (*QuestionStats, error) {
+	rows, err := DB.Query("SELECT value FROM answers WHERE question_id=?", questionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	n := len(opts)
+	type rankAcc struct {
+		score   float64
+		rankSum float64
+		count   int
+	}
+	accs := map[string]*rankAcc{}
+	ballots := 0
+	for rows.Next() {
+		var val string
+		if err := rows.Scan(&val); err != nil {
+			return nil, err
+		}
+		var order []string
+		if err := json.Unmarshal([]byte(val), &order); err != nil {
+			continue
+		}
+		ballots++
+		for i, label := range order {
+			a := accs[label]
+			if a == nil {
+				a = &rankAcc{}
+				accs[label] = a
+			}
+			a.count++
+			a.score += float64(n - (i + 1))
+			a.rankSum += float64(i + 1)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// Build in option order first so score ties stay deterministic.
+	results := make([]Result, 0, len(accs))
+	seen := map[string]bool{}
+	for _, o := range opts {
+		if a := accs[o]; a != nil {
+			results = append(results, rankResult(o, a.score, a.rankSum, a.count))
+			seen[o] = true
+		}
+	}
+	var extras []string
+	for label := range accs {
+		if !seen[label] {
+			extras = append(extras, label)
+		}
+	}
+	sort.Strings(extras)
+	for _, label := range extras {
+		a := accs[label]
+		results = append(results, rankResult(label, a.score, a.rankSum, a.count))
+	}
+	sort.SliceStable(results, func(i, j int) bool { return results[i].Score > results[j].Score })
+	stats.Total = ballots
+	stats.Results = results
+	return stats, nil
+}
+
+func rankResult(label string, score, rankSum float64, count int) Result {
+	r := Result{Label: label, Count: count, Score: score}
+	if count > 0 {
+		r.AvgRank = rankSum / float64(count)
+	}
+	return r
+}
+
+// npsStats returns the 0..10 distribution plus the net promoter score.
+func npsStats(questionID int64, stats *QuestionStats) (*QuestionStats, error) {
+	rows, err := DB.Query("SELECT value, COUNT(*) FROM answers WHERE question_id=? GROUP BY value", questionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	counts := [11]int{}
+	for rows.Next() {
+		var val string
+		var cnt int
+		if err := rows.Scan(&val, &cnt); err != nil {
+			return nil, err
+		}
+		n, err := strconv.Atoi(strings.TrimSpace(val))
+		if err != nil || n < 0 || n > 10 {
+			continue
+		}
+		counts[n] += cnt
+		stats.Total += cnt
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	stats.Results = make([]Result, 0, 11)
+	for score := 0; score <= 10; score++ {
+		stats.Results = append(stats.Results, Result{Label: strconv.Itoa(score), Count: counts[score]})
+	}
+	if stats.Total > 0 {
+		promoters := counts[9] + counts[10]
+		detractors := counts[0] + counts[1] + counts[2] + counts[3] + counts[4] + counts[5] + counts[6]
+		nps := int(math.Round(100 * float64(promoters-detractors) / float64(stats.Total)))
+		stats.NPS = &nps
+	}
+	return stats, nil
+}
+
+// orderedResults lists the given options in order (zero counts included),
+// followed by any extra counted values.
+func orderedResults(opts []string, counts map[string]int) []Result {
+	ordered := make([]Result, 0, len(opts))
+	seen := map[string]bool{}
+	for _, o := range opts {
+		ordered = append(ordered, Result{Label: o, Count: counts[o]})
+		seen[o] = true
+	}
+	var extras []string
+	for label := range counts {
+		if !seen[label] {
+			extras = append(extras, label)
+		}
+	}
+	sort.Strings(extras)
+	for _, label := range extras {
+		ordered = append(ordered, Result{Label: label, Count: counts[label]})
+	}
+	return ordered
 }
 
 // answers

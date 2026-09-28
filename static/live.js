@@ -58,7 +58,38 @@
     if(active.kind==='wordcloud'){
       renderCloud(cloud, active);
     }
-    renderBars(results, active);
+    if(active.kind==='ranking'){
+      renderRanking(results, active);
+    } else {
+      if(active.kind==='nps') renderNpsBadge(results, active);
+      renderBars(results, active);
+    }
+  }
+
+  function renderNpsBadge(container, active){
+    if(active.nps===null || active.nps===undefined) return;
+    var b=document.createElement('div'); b.className='pill live'; b.style.cssText='margin-top:18px;font-size:1.05rem'; b.textContent='NPS '+active.nps;
+    container.appendChild(b);
+  }
+
+  function renderRanking(container, active){
+    if(!active.show_results) return;
+    var res=active.results||[];
+    if(!res.length) return;
+    var max=Math.max.apply(null, res.map(function(r){return r.score||0}))||1;
+    var wrap=document.createElement('div'); wrap.style.display='grid'; wrap.style.gap='12px'; wrap.style.marginTop='18px';
+    res.forEach(function(r, idx){
+      var row=document.createElement('div'); row.style.display='grid'; row.style.gap='6px';
+      var head=document.createElement('div'); head.style.display='flex'; head.style.justifyContent='space-between'; head.style.gap='12px'; head.style.fontSize='.95rem';
+      var lab=document.createElement('strong'); lab.style.letterSpacing='-.02em'; lab.textContent=(idx+1)+'. '+r.label;
+      var cnt=document.createElement('span'); cnt.style.color='var(--muted)'; cnt.style.fontVariantNumeric='tabular-nums'; cnt.textContent=(r.score||0)+' pts · avg '+(r.avg_rank?r.avg_rank.toFixed(1):'0');
+      head.appendChild(lab); head.appendChild(cnt);
+      var track=document.createElement('div'); track.style.height='18px'; track.style.borderRadius='999px'; track.style.background='rgba(255,255,255,.07)'; track.style.overflow='hidden'; track.style.border='1px solid rgba(255,255,255,.08)';
+      var fill=document.createElement('div'); fill.style.height='100%'; fill.style.borderRadius='999px'; fill.style.background='linear-gradient(135deg,#6366F1,#A855F7 45%,#EC4899 75%,#22D3EE)'; fill.style.width='0'; fill.style.transition='width .9s cubic-bezier(.16,1,.3,1)';
+      track.appendChild(fill); row.appendChild(head); row.appendChild(track); wrap.appendChild(row);
+      requestAnimationFrame(function(){ fill.style.width=((r.score||0)/max*100)+'%'; });
+    });
+    container.appendChild(wrap);
   }
 
   function renderBars(container, active){

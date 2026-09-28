@@ -164,11 +164,6 @@ func SubmitAnswer(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-	val := strings.TrimSpace(req.Value)
-	if val == "" {
-		jsonError(w, "value is required", http.StatusBadRequest)
-		return
-	}
 	if req.QuestionID == 0 {
 		jsonError(w, "question_id is required", http.StatusBadRequest)
 		return
@@ -184,6 +179,11 @@ func SubmitAnswer(w http.ResponseWriter, r *http.Request) {
 	}
 	if q.Status != "live" && !q.IsFeedback {
 		jsonError(w, "question is not live", http.StatusBadRequest)
+		return
+	}
+	val, err := db.ValidateAnswer(q.Kind, q.Options, req.Value)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	pid := participantID(w, r, ev.ID)
