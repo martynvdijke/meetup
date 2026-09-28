@@ -82,6 +82,7 @@
   }
 
   function renderNpsBadge(container, active){
+    if(!active.show_results) return;
     if(active.nps===null || active.nps===undefined) return;
     var b=document.createElement('div'); b.className='pill live'; b.style.cssText='margin-top:18px;font-size:1.05rem'; b.textContent='NPS '+active.nps;
     container.appendChild(b);

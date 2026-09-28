@@ -9,19 +9,6 @@ import (
 	"meetup/db"
 )
 
-// StatsSummaryDTO reports activity counters for a single event.
-type StatsSummaryDTO struct {
-	Participants     int     `json:"participants"`
-	Answered         int     `json:"answered"`
-	ResponseRate     float64 `json:"response_rate"`
-	Answers          int     `json:"answers"`
-	Questions        int     `json:"questions"`
-	QA               int     `json:"qa"`
-	Votes            int     `json:"votes"`
-	FeedbackAnswered int     `json:"feedback_answered"`
-	FeedbackRate     float64 `json:"feedback_rate"`
-}
-
 // StatsTotalsDTO reports global counters.
 type StatsTotalsDTO struct {
 	Events       int `json:"events"`
@@ -51,8 +38,8 @@ type EventStatsSummaryDTO struct {
 
 // GlobalStatsDTO is the whole-instance statistics payload.
 type GlobalStatsDTO struct {
-	Totals   StatsTotalsDTO         `json:"totals"`
-	PerEvent []EventStatsSummaryDTO `json:"per_event"`
+	Totals StatsTotalsDTO         `json:"totals"`
+	Events []EventStatsSummaryDTO `json:"events"`
 }
 
 // EventStatsDTO is the detailed statistics payload for one event.
@@ -60,20 +47,6 @@ type EventStatsDTO struct {
 	Event     EventStatsSummaryDTO `json:"event"`
 	Questions []QuestionDTO        `json:"questions"`
 	Feedback  []QuestionDTO        `json:"feedback"`
-}
-
-func statsSummaryDTO(s db.StatsSummary) StatsSummaryDTO {
-	return StatsSummaryDTO{
-		Participants:     s.Participants,
-		Answered:         s.Answered,
-		ResponseRate:     db.ResponseRate(s.Participants, s.Answered),
-		Answers:          s.Answers,
-		Questions:        s.Questions,
-		QA:               s.QA,
-		Votes:            s.Votes,
-		FeedbackAnswered: s.FeedbackAnswered,
-		FeedbackRate:     db.ResponseRate(s.Participants, s.FeedbackAnswered),
-	}
 }
 
 func eventStatsSummaryDTO(ev db.Event, s db.StatsSummary) EventStatsSummaryDTO {
@@ -130,7 +103,7 @@ func buildEventStats(ev *db.Event) (*EventStatsDTO, error) {
 // @Failure  500 {object} map[string]string
 // @Router   /api/admin/stats [get]
 func AdminGetStats(w http.ResponseWriter, r *http.Request) {
-	totals, perEvent, err := db.GlobalStats()
+	totals, events, err := db.GlobalStats()
 	if err != nil {
 		jsonError(w, "could not load stats", http.StatusInternalServerError)
 		return
@@ -144,10 +117,10 @@ func AdminGetStats(w http.ResponseWriter, r *http.Request) {
 			QA:           totals.QA,
 			Votes:        totals.Votes,
 		},
-		PerEvent: make([]EventStatsSummaryDTO, 0, len(perEvent)),
+		Events: make([]EventStatsSummaryDTO, 0, len(events)),
 	}
-	for _, es := range perEvent {
-		dto.PerEvent = append(dto.PerEvent, eventStatsSummaryDTO(es.Event, es.Summary))
+	for _, es := range events {
+		dto.Events = append(dto.Events, eventStatsSummaryDTO(es.Event, es.Summary))
 	}
 	writeJSON(w, http.StatusOK, dto)
 }

@@ -2025,7 +2025,7 @@ const docTemplate = `{
         "handlers.GlobalStatsDTO": {
             "type": "object",
             "properties": {
-                "per_event": {
+                "events": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/handlers.EventStatsSummaryDTO"

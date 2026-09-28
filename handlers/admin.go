@@ -331,6 +331,9 @@ func validateQuestionMedia(mediaURL, mediaType string) error {
 	mediaURL = strings.TrimSpace(mediaURL)
 	mediaType = strings.TrimSpace(mediaType)
 	if mediaURL == "" {
+		if mediaType != "" {
+			return fmt.Errorf("media_type requires a media_url")
+		}
 		return nil
 	}
 	if mediaType != "image" && mediaType != "video" {
@@ -1137,7 +1140,6 @@ func otelSettingsDTO() OTelSettingsDTO {
 		stored = otelcfg.Stored{Endpoint: s.Endpoint, ServiceName: s.ServiceName, Headers: s.Headers}
 	}
 	applied := otelcfg.Applied()
-	next := otelcfg.Resolve(stored)
 	return OTelSettingsDTO{
 		Enabled:         applied.Enabled(),
 		Endpoint:        applied.Endpoint,
@@ -1145,7 +1147,7 @@ func otelSettingsDTO() OTelSettingsDTO {
 		Headers:         applied.Headers,
 		Stored:          OTelValues{Endpoint: stored.Endpoint, ServiceName: stored.ServiceName, Headers: stored.Headers},
 		Effective:       OTelValues{Endpoint: applied.Endpoint, ServiceName: applied.ServiceName, Headers: applied.Headers},
-		Source:          OTelValues{Endpoint: next.EndpointSource, ServiceName: next.ServiceNameSource, Headers: next.HeadersSource},
+		Source:          OTelValues{Endpoint: applied.EndpointSource, ServiceName: applied.ServiceNameSource, Headers: applied.HeadersSource},
 		RestartRequired: otelcfg.RestartRequired(stored, applied),
 	}
 }

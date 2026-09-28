@@ -106,7 +106,7 @@ definitions:
     type: object
   handlers.GlobalStatsDTO:
     properties:
-      per_event:
+      events:
         items:
           $ref: '#/definitions/handlers.EventStatsSummaryDTO'
         type: array
