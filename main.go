@@ -108,6 +108,8 @@ func main() {
 	adminMux.HandleFunc("GET /api/admin/settings/branding", handlers.AdminGetBranding)
 	adminMux.HandleFunc("PUT /api/admin/settings/branding", handlers.AdminUpdateBranding)
 	adminMux.HandleFunc("GET /api/admin/otel/status", handlers.AdminOTelStatus)
+	adminMux.HandleFunc("GET /api/admin/settings/otel", handlers.AdminGetOTelSettings)
+	adminMux.HandleFunc("PUT /api/admin/settings/otel", handlers.AdminUpdateOTelSettings)
 	for _, method := range []string{"GET", "POST", "PATCH", "DELETE", "PUT"} {
 		mux.Handle(method+" /api/admin/", handlers.AdminAuth(adminMux))
 	}

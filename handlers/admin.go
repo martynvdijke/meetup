@@ -19,6 +19,7 @@ import (
 	"github.com/google/uuid"
 
 	"meetup/db"
+	"meetup/otelcfg"
 )
 
 var slugRe = regexp.MustCompile(`[^a-z0-9]+`)
@@ -1110,38 +1111,100 @@ func AdminUpdateBranding(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"brand": body.Brand})
 }
 
-// AdminOTelStatus returns OTel status.
+// OTelValues is one view (stored or effective) of the OTel configuration.
+type OTelValues struct {
+	Endpoint    string `json:"endpoint"`
+	ServiceName string `json:"service_name"`
+	Headers     string `json:"headers"`
+}
+
+// OTelSettingsDTO reports the stored and the effective OpenTelemetry
+// configuration, where each value came from, and whether a restart is needed.
+type OTelSettingsDTO struct {
+	Enabled         bool       `json:"enabled"`
+	Endpoint        string     `json:"endpoint"`
+	ServiceName     string     `json:"service_name"`
+	Headers         string     `json:"headers"`
+	Stored          OTelValues `json:"stored"`
+	Effective       OTelValues `json:"effective"`
+	Source          OTelValues `json:"source"`
+	RestartRequired bool       `json:"restart_required"`
+}
+
+func otelSettingsDTO() OTelSettingsDTO {
+	stored := otelcfg.Stored{}
+	if s, err := db.GetOTelSettings(); err == nil {
+		stored = otelcfg.Stored{Endpoint: s.Endpoint, ServiceName: s.ServiceName, Headers: s.Headers}
+	}
+	applied := otelcfg.Applied()
+	next := otelcfg.Resolve(stored)
+	return OTelSettingsDTO{
+		Enabled:         applied.Enabled(),
+		Endpoint:        applied.Endpoint,
+		ServiceName:     applied.ServiceName,
+		Headers:         applied.Headers,
+		Stored:          OTelValues{Endpoint: stored.Endpoint, ServiceName: stored.ServiceName, Headers: stored.Headers},
+		Effective:       OTelValues{Endpoint: applied.Endpoint, ServiceName: applied.ServiceName, Headers: applied.Headers},
+		Source:          OTelValues{Endpoint: next.EndpointSource, ServiceName: next.ServiceNameSource, Headers: next.HeadersSource},
+		RestartRequired: otelcfg.RestartRequired(stored, applied),
+	}
+}
+
+// AdminOTelStatus returns the effective OpenTelemetry status.
 // @Summary  OTel status
 // @Tags     admin
 // @Produce  json
 // @Security CookieAuth
-// @Success  200 {object} map[string]any
+// @Success  200 {object} OTelSettingsDTO
 // @Router   /api/admin/otel/status [get]
 func AdminOTelStatus(w http.ResponseWriter, r *http.Request) {
-	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-	if endpoint == "" {
-		endpoint = os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
+	writeJSON(w, http.StatusOK, otelSettingsDTO())
+}
+
+// AdminGetOTelSettings returns the stored and effective OTel settings.
+// @Summary  Get OTel settings
+// @Tags     admin
+// @Produce  json
+// @Security CookieAuth
+// @Success  200 {object} OTelSettingsDTO
+// @Router   /api/admin/settings/otel [get]
+func AdminGetOTelSettings(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, otelSettingsDTO())
+}
+
+// AdminUpdateOTelSettings stores new OTel settings; they apply on restart.
+// @Summary  Update OTel settings
+// @Tags     admin
+// @Accept   json
+// @Produce  json
+// @Security CookieAuth
+// @Param    body body object{endpoint=string,service_name=string,headers=string} true "OTel settings"
+// @Success  200 {object} OTelSettingsDTO
+// @Failure  400 {object} map[string]any
+// @Router   /api/admin/settings/otel [put]
+func AdminUpdateOTelSettings(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Endpoint    string `json:"endpoint"`
+		ServiceName string `json:"service_name"`
+		Headers     string `json:"headers"`
 	}
-	if endpoint == "" {
-		endpoint = os.Getenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT")
+	if err := decodeJSON(r, &req); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
 	}
-	if endpoint == "" {
-		endpoint = os.Getenv("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT")
-	}
-	enabled := endpoint != ""
-	// also consider any of those set
-	if !enabled {
-		if os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") != "" || os.Getenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT") != "" || os.Getenv("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT") != "" {
-			enabled = true
+	req.Endpoint = strings.TrimSpace(req.Endpoint)
+	req.ServiceName = strings.TrimSpace(req.ServiceName)
+	req.Headers = strings.TrimSpace(req.Headers)
+	if req.Endpoint != "" {
+		u, err := url.Parse(req.Endpoint)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			jsonError(w, "endpoint must be an http(s) url", http.StatusBadRequest)
+			return
 		}
 	}
-	serviceName := os.Getenv("OTEL_SERVICE_NAME")
-	if serviceName == "" {
-		serviceName = "meetup"
+	if err := db.UpdateOTelSettings(req.Endpoint, req.ServiceName, req.Headers); err != nil {
+		jsonError(w, "could not save settings", http.StatusInternalServerError)
+		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"enabled":      enabled,
-		"endpoint":     endpoint,
-		"service_name": serviceName,
-	})
+	writeJSON(w, http.StatusOK, otelSettingsDTO())
 }

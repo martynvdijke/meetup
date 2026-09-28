@@ -570,21 +570,51 @@
     var payload={ umami_script_url: document.getElementById('an-url').value.trim(), umami_website_id: document.getElementById('an-id').value.trim(), tracking_enabled: document.getElementById('an-enabled').checked };
     api('/api/admin/settings/analytics',{method:'PUT', body:JSON.stringify(payload)}).then(function(){ toast('Analytics saved'); }).catch(function(err){ toast(err.message||'Failed','err'); });
   });
+  function renderOtelStatus(j){
+    var el=document.getElementById('otel-status');
+    if(!el) return;
+    el.textContent=''; // clear
+    var eff=j.effective||{}, src=j.source||{};
+    var rows=[
+      ['enabled', String(!!j.enabled)],
+      ['endpoint', eff.endpoint||'—'],
+      ['service name', eff.service_name||'—'],
+      ['source', 'endpoint: '+(src.endpoint||'default')+' · name: '+(src.service_name||'default')+' · headers: '+(src.headers||'default')],
+      ['restart required', j.restart_required?'yes':'no']
+    ];
+    rows.forEach(function(r){
+      var div=document.createElement('div'); div.style.display='flex'; div.style.justifyContent='space-between'; div.style.gap='10px';
+      var k=document.createElement('strong'); k.textContent=r[0];
+      var v=document.createElement('span'); v.textContent=r[1]; v.style.color='#D6DAEA';
+      div.appendChild(k); div.appendChild(v); el.appendChild(div);
+    });
+    var note=document.getElementById('otel-restart');
+    if(note) note.classList.toggle('hidden', !j.restart_required);
+  }
   function loadOtel(){
-    api('/api/admin/otel/status').then(function(j){
-      var el=document.getElementById('otel-status');
+    api('/api/admin/settings/otel').then(function(j){
+      var stored=j.stored||{};
+      document.getElementById('ot-endpoint').value=stored.endpoint||'';
+      document.getElementById('ot-service').value=stored.service_name||'';
+      document.getElementById('ot-headers').value=stored.headers||'';
+      renderOtelStatus(j);
       var mini=document.getElementById('otel-mini');
-      el.textContent=''; // clear
-      var rows=[ ['enabled', String(j.enabled)], ['endpoint', j.endpoint||'—'], ['service_name', j.service_name||'—'] ];
-      rows.forEach(function(r){
-        var div=document.createElement('div'); div.style.display='flex'; div.style.justifyContent='space-between'; div.style.gap='10px';
-        var k=document.createElement('strong'); k.textContent=r[0];
-        var v=document.createElement('span'); v.textContent=r[1]; v.style.color='#D6DAEA';
-        div.appendChild(k); div.appendChild(v); el.appendChild(div);
-      });
       if(mini) mini.textContent='OTel: '+(j.enabled?'enabled':'disabled') + (j.endpoint? ' · '+j.endpoint:'');
     }).catch(function(){ var el=document.getElementById('otel-status'); if(el) el.textContent='Could not load OTel status.'; });
   }
+  var otelForm=document.getElementById('form-otel');
+  if(otelForm) otelForm.addEventListener('submit', function(e){
+    e.preventDefault();
+    var payload={
+      endpoint: document.getElementById('ot-endpoint').value.trim(),
+      service_name: document.getElementById('ot-service').value.trim(),
+      headers: document.getElementById('ot-headers').value.trim()
+    };
+    api('/api/admin/settings/otel',{method:'PUT', body:JSON.stringify(payload)}).then(function(j){
+      renderOtelStatus(j);
+      toast(j.restart_required?'OTel settings saved — restart the server to apply':'OTel settings saved');
+    }).catch(function(err){ toast(err.message||'Failed','err'); });
+  });
 
   // initial boot
   boot();

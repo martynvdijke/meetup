@@ -376,6 +376,34 @@ func TestSettings(t *testing.T) {
 	}
 }
 
+func TestOTelSettings(t *testing.T) {
+	tmpDB(t)
+	s, err := GetOTelSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Endpoint != "" || s.ServiceName != "" || s.Headers != "" {
+		t.Fatalf("defaults %+v", s)
+	}
+	if err := UpdateOTelSettings("http://collector:4318", "meetup-db", "Authorization=Bearer%20x"); err != nil {
+		t.Fatal(err)
+	}
+	s2, err := GetOTelSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s2.Endpoint != "http://collector:4318" || s2.ServiceName != "meetup-db" || s2.Headers != "Authorization=Bearer%20x" {
+		t.Fatalf("round trip %+v", s2)
+	}
+	if err := UpdateOTelSettings("", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	s3, _ := GetOTelSettings()
+	if s3.Endpoint != "" || s3.ServiceName != "" || s3.Headers != "" {
+		t.Fatalf("clear %+v", s3)
+	}
+}
+
 func TestValidateAnswer(t *testing.T) {
 	opts := []string{"A", "B", "C"}
 	cases := []struct {

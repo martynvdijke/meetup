@@ -104,6 +104,14 @@ type AnalyticsSettings struct {
 	TrackingEnabled bool
 }
 
+// OTelSettings is the admin-managed OpenTelemetry configuration. Environment
+// variables take precedence over these values.
+type OTelSettings struct {
+	Endpoint    string
+	ServiceName string
+	Headers     string
+}
+
 type Participant struct {
 	ID        int64
 	EventID   int64
@@ -233,6 +241,9 @@ func migrate() error {
 			umami_website_id TEXT NOT NULL DEFAULT '',
 			tracking_enabled INTEGER NOT NULL DEFAULT 0,
 			brand TEXT NOT NULL DEFAULT '',
+			otel_endpoint TEXT NOT NULL DEFAULT '',
+			otel_service_name TEXT NOT NULL DEFAULT '',
+			otel_headers TEXT NOT NULL DEFAULT '',
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);
 	`)
@@ -247,7 +258,19 @@ func migrate() error {
 	if err := ensureColumn("questions", "media_url", "media_url TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
-	return ensureColumn("questions", "media_type", "media_type TEXT NOT NULL DEFAULT ''")
+	if err := ensureColumn("questions", "media_type", "media_type TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	for _, col := range []struct{ name, ddl string }{
+		{"otel_endpoint", "otel_endpoint TEXT NOT NULL DEFAULT ''"},
+		{"otel_service_name", "otel_service_name TEXT NOT NULL DEFAULT ''"},
+		{"otel_headers", "otel_headers TEXT NOT NULL DEFAULT ''"},
+	} {
+		if err := ensureColumn("settings", col.name, col.ddl); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ensureColumn adds a column to an existing table if it is missing. It is
@@ -1351,6 +1374,23 @@ func GetAnalyticsSettings() (*AnalyticsSettings, error) {
 
 func UpdateAnalyticsSettings(url, websiteID string, enabled bool) error {
 	_, err := DB.Exec("UPDATE settings SET umami_script_url=?, umami_website_id=?, tracking_enabled=?, updated_at=CURRENT_TIMESTAMP WHERE id=1", url, websiteID, btoi(enabled))
+	return err
+}
+
+// GetOTelSettings returns the admin-managed OpenTelemetry configuration.
+func GetOTelSettings() (*OTelSettings, error) {
+	var s OTelSettings
+	err := DB.QueryRow("SELECT otel_endpoint, otel_service_name, otel_headers FROM settings WHERE id=1").Scan(&s.Endpoint, &s.ServiceName, &s.Headers)
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+// UpdateOTelSettings stores the OpenTelemetry configuration. The values are
+// applied on the next restart; environment variables still take precedence.
+func UpdateOTelSettings(endpoint, serviceName, headers string) error {
+	_, err := DB.Exec("UPDATE settings SET otel_endpoint=?, otel_service_name=?, otel_headers=?, updated_at=CURRENT_TIMESTAMP WHERE id=1", endpoint, serviceName, headers)
 	return err
 }
 

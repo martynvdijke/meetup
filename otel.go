@@ -1,11 +1,12 @@
 package main
 
-// OpenTelemetry wiring for the meetup HTTP server.
+// Package-level OpenTelemetry wiring for the meetup HTTP server.
 //
-// Telemetry is opt-in and driven entirely by the standard OTEL_* environment
-// variables: with no OTLP endpoint configured the app keeps the global no-op
-// providers and no exporter is created, so there is no overhead and no
-// connection spam to a non-existent collector.
+// Telemetry is opt-in. The OTLP endpoint, service name and headers come from
+// the standard OTEL_* environment variables, falling back to the settings
+// stored by the admin UI in the database. With no endpoint configured the app
+// keeps the global no-op providers and no exporter is created, so there is no
+// overhead and no connection spam to a non-existent collector.
 //
 // Supported via the OTLP/HTTP exporters' built-in env handling:
 //
@@ -37,36 +38,28 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
+
+	"meetup/db"
+	"meetup/otelcfg"
 )
 
-// otelEnvKeys are the env vars that opt the app into OTLP export.
-var otelEnvKeys = []string{
-	"OTEL_EXPORTER_OTLP_ENDPOINT",
-	"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
-	"OTEL_EXPORTER_OTLP_METRICS_ENDPOINT",
-	"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT",
-}
-
-func otelEndpointConfigured() bool {
-	for _, k := range otelEnvKeys {
-		if os.Getenv(k) != "" {
-			return true
-		}
+// otelConfig resolves the effective configuration: environment variables
+// first, then the admin-managed database settings, then defaults.
+func otelConfig() otelcfg.Config {
+	stored := otelcfg.Stored{}
+	if s, err := db.GetOTelSettings(); err != nil {
+		log.Printf("OpenTelemetry: could not read stored settings: %v", err)
+	} else {
+		stored = otelcfg.Stored{Endpoint: s.Endpoint, ServiceName: s.ServiceName, Headers: s.Headers}
 	}
-	return false
-}
-
-func otelEndpoint() string {
-	for _, k := range otelEnvKeys {
-		if v := os.Getenv(k); v != "" {
-			return v
-		}
-	}
-	return ""
+	return otelcfg.Resolve(stored)
 }
 
 func otelServiceName() string {
-	return getEnv("OTEL_SERVICE_NAME", "meetup")
+	if c := otelcfg.Applied(); c.ServiceName != "" {
+		return c.ServiceName
+	}
+	return otelcfg.DefaultServiceName
 }
 
 // setupOTel configures traces, metrics and logs against the OTLP/HTTP
@@ -75,8 +68,24 @@ func otelServiceName() string {
 // endpoint is configured no providers are installed and shutdown is a no-op.
 func setupOTel(ctx context.Context) (func(context.Context) error, error) {
 	noop := func(context.Context) error { return nil }
-	if !otelEndpointConfigured() {
-		log.Printf("OpenTelemetry: no OTLP endpoint set, telemetry disabled")
+	cfg := otelConfig()
+	otelcfg.MarkApplied(cfg)
+
+	// Hand database-only values to the OTLP exporters through the standard
+	// environment variables. Environment-set values are left untouched so
+	// signal-specific endpoints keep working as documented by the OTel SDK.
+	if cfg.EndpointSource == "db" {
+		_ = os.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", cfg.Endpoint)
+	}
+	if cfg.HeadersSource == "db" {
+		_ = os.Setenv("OTEL_EXPORTER_OTLP_HEADERS", cfg.Headers)
+	}
+	if cfg.ServiceNameSource == "db" {
+		_ = os.Setenv("OTEL_SERVICE_NAME", cfg.ServiceName)
+	}
+
+	if !cfg.Enabled() {
+		log.Printf("OpenTelemetry: no OTLP endpoint configured, telemetry disabled")
 		return noop, nil
 	}
 
@@ -144,7 +153,7 @@ func setupOTel(ctx context.Context) (func(context.Context) error, error) {
 	)
 	log.SetOutput(io.MultiWriter(os.Stderr, otelLog.Writer()))
 
-	log.Printf("OpenTelemetry: exporting to %s", otelEndpoint())
+	log.Printf("OpenTelemetry: exporting to %s", cfg.Endpoint)
 
 	return func(ctx context.Context) error {
 		log.SetOutput(os.Stderr)
