@@ -25,3 +25,4 @@ playwright-report/
 media/
 !media/.gitkeep
 e2e-media/
+e2e-oidc-media/
