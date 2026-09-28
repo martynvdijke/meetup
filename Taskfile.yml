@@ -1,0 +1,83 @@
+version: '3'
+
+tasks:
+  css:
+    desc: Build Tailwind CSS
+    cmds:
+      - |
+        if [ ! -d node_modules ]; then npm install; fi
+        npm run build:css
+
+  swagger:
+    desc: Generate Swagger/OpenAPI documentation (requires swag on PATH)
+    # Requires: go install github.com/swaggo/swag/cmd/swag@latest
+    cmds:
+      - swag init -g main.go -o docs --parseDependency --parseInternal
+
+  build:
+    desc: Build the Go binary
+    deps: [css]
+    cmds:
+      - go build -o meetup .
+
+  run:
+    desc: Run the application locally
+    deps: [build]
+    cmds:
+      - ./meetup
+    env:
+      PORT: "6280"
+      DB_PATH: ./meetup.db
+      MEDIA_DIR: ./media
+
+  dev:
+    desc: Run with hot reloading (requires air)
+    cmds:
+      - air -c .air.toml
+
+  test:
+    desc: Run Go unit tests
+    cmds:
+      - go test -v ./...
+
+  test:e2e:
+    desc: Run Playwright e2e tests
+    deps: [build]
+    cmds:
+      - npx playwright test
+
+  test-all:
+    desc: Run all tests (unit + e2e)
+    cmds:
+      - task: test
+      - task: test:e2e
+
+  lint:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  tidy:
+    desc: Format and tidy Go modules
+    cmds:
+      - go fmt ./...
+      - go mod tidy
+
+  prepush:
+    desc: Run all checks required before pushing
+    cmds:
+      - task: css
+      - task: tidy
+      - task: lint
+      - task: test
+      - task: build
+
+  docker-build:
+    desc: Build Docker image
+    cmds:
+      - docker build -t meetup .
+
+  docker-run:
+    desc: Run Docker container
+    cmds:
+      - docker run -p 6280:6280 meetup

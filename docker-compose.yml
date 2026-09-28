@@ -1,0 +1,45 @@
+services:
+  meetup:
+    build: .
+    ports:
+      - "6280:6280"
+    environment:
+      PORT: "6280"
+      DB_PATH: /db/meetup.db
+      MEDIA_DIR: /app/media
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      OIDC_ENABLED: ${OIDC_ENABLED:-}
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-https://authelia.vandijke.xyz}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-meetup}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_REDIRECT_URL: ${OIDC_REDIRECT_URL:-https://meetup.vandijke.xyz/api/auth/oidc/callback}
+      OIDC_SCOPES: ${OIDC_SCOPES:-openid email profile groups}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    volumes:
+      - meetup_media:/app/media
+      - meetup_db:/db
+
+  # Optional: self-hosted analytics and telemetry
+  # Uncomment to enable.
+
+  # umami:
+  #   image: ghcr.io/umami-software/umami:postgresql-latest
+  #   environment:
+  #     DATABASE_URL: postgresql://umami:umami@db:5432/umami
+  #   ports:
+  #     - "3000:3000"
+  #   depends_on:
+  #     - db
+
+  # otel-collector:
+  #   image: otel/opentelemetry-collector-contrib:latest
+  #   command: --config=/etc/otelcol.yaml
+  #   volumes:
+  #     - ./otelcol.yaml:/etc/otelcol.yaml
+  #   ports:
+  #     - "4317:4317"   # OTLP gRPC
+  #     - "4318:4318"   # OTLP HTTP
+
+volumes:
+  meetup_media:
+  meetup_db:

@@ -1,0 +1,124 @@
+name: Release
+
+on:
+  push:
+    branches: ["main"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yaml
+    secrets: inherit
+    permissions:
+      contents: write
+      pull-requests: write
+      packages: write
+      attestations: write
+      id-token: write
+
+  release:
+    needs: ci
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    name: Release
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+      packages: write
+      attestations: write
+      id-token: write
+
+    outputs:
+      new_release_published: ${{ steps.semantic.outputs.new_release_published }}
+      new_release_version: ${{ steps.semantic.outputs.new_release_version }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Semantic Release
+        id: semantic
+        uses: cycjimmy/semantic-release-action@v6
+        with:
+          extra_plugins: |
+            @semantic-release/changelog
+            @semantic-release/exec
+            @semantic-release/git
+            @semantic-release/github
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to Docker Hub
+        if: steps.semantic.outputs.new_release_published == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Login to GitHub Container Registry
+        if: steps.semantic.outputs.new_release_published == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Go
+        if: steps.semantic.outputs.new_release_published == 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.27'
+
+      - name: Build the Docker image
+        if: steps.semantic.outputs.new_release_published == 'true'
+        run: docker build . --file Dockerfile --tag martynvandijke/meetup:latest --tag ghcr.io/martynvdijke/meetup:latest
+
+      - name: Push Docker image
+        if: steps.semantic.outputs.new_release_published == 'true'
+        run: |
+          VERSION=${{ steps.semantic.outputs.new_release_version }}
+          docker tag martynvandijke/meetup:latest martynvandijke/meetup:$VERSION
+          docker tag ghcr.io/martynvdijke/meetup:latest ghcr.io/martynvdijke/meetup:$VERSION
+
+          docker push martynvandijke/meetup:latest
+          docker push martynvandijke/meetup:$VERSION
+          docker push ghcr.io/martynvdijke/meetup:latest
+          docker push ghcr.io/martynvdijke/meetup:$VERSION
+
+  notify:
+    needs: [ci, release]
+    if: ${{ always() }}
+    name: Gotify Notification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Release Published Notification
+        if: needs.ci.result == 'success' && needs.release.result == 'success' && needs.release.outputs.new_release_published == 'true'
+        uses: eikendev/gotify-action@cb63800546f25c393ab96f09d12a094138c514f4 # master
+        with:
+          gotify_api_base: ${{ secrets.GOTIFY_API_BASE }}
+          gotify_app_token: ${{ secrets.GOTIFY_APP_TOKEN }}
+          notification_title: '${{ github.repository }} Release Published - ${{ needs.release.outputs.new_release_version }}'
+          notification_message: '${{ github.repository }}: Version ${{ needs.release.outputs.new_release_version }} was successfully released.'
+
+      - name: No Release Needed Notification
+        if: needs.ci.result == 'success' && needs.release.result == 'success' && needs.release.outputs.new_release_published != 'true'
+        uses: eikendev/gotify-action@cb63800546f25c393ab96f09d12a094138c514f4 # master
+        with:
+          gotify_api_base: ${{ secrets.GOTIFY_API_BASE }}
+          gotify_app_token: ${{ secrets.GOTIFY_APP_TOKEN }}
+          notification_title: '${{ github.repository }} Release - Up to Date'
+          notification_message: 'Workflow passed but no new release was published.'
+
+      - name: Failure Notification
+        if: needs.ci.result != 'success' || needs.release.result != 'success'
+        uses: eikendev/gotify-action@cb63800546f25c393ab96f09d12a094138c514f4 # master
+        with:
+          gotify_api_base: ${{ secrets.GOTIFY_API_BASE }}
+          gotify_app_token: ${{ secrets.GOTIFY_APP_TOKEN }}
+          notification_title: 'Release Failed'
+          notification_message: 'The release workflow has failed. ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+          notification_priority: 5
