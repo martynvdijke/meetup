@@ -3,6 +3,8 @@ package db
 import (
 	"database/sql"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -558,12 +560,13 @@ func TestPresentations(t *testing.T) {
 }
 
 func TestEnsureColumnMigration(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "legacy.db")
-	raw, err := sql.Open("sqlite", path)
+	dir := t.TempDir()
+	legacyPath := filepath.Join(dir, "legacy.db")
+	raw, err := sql.Open("sqlite", legacyPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Legacy questions table without the media columns.
+	// Legacy questions and settings tables without the media/OTel columns.
 	if _, err := raw.Exec(`CREATE TABLE questions (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		event_id INTEGER NOT NULL,
@@ -577,14 +580,32 @@ func TestEnsureColumnMigration(t *testing.T) {
 		is_feedback INTEGER NOT NULL DEFAULT 0,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
-	INSERT INTO questions (event_id, kind, prompt) VALUES (1, 'poll', 'legacy question');`); err != nil {
+	INSERT INTO questions (event_id, kind, prompt) VALUES (1, 'poll', 'legacy question');
+	CREATE TABLE settings (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		umami_script_url TEXT NOT NULL DEFAULT '',
+		umami_website_id TEXT NOT NULL DEFAULT '',
+		tracking_enabled INTEGER NOT NULL DEFAULT 0,
+		brand TEXT NOT NULL DEFAULT '',
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	INSERT INTO settings (id, brand) VALUES (1, 'legacy brand');`); err != nil {
 		t.Fatal(err)
 	}
 	if err := raw.Close(); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := Init(path); err != nil {
+	// Fresh install to compare the migrated schema against.
+	freshPath := filepath.Join(dir, "fresh.db")
+	if err := Init(freshPath); err != nil {
+		t.Fatalf("init fresh: %v", err)
+	}
+	freshQuestions := tableColumns(t, freshPath, "questions")
+	freshSettings := tableColumns(t, freshPath, "settings")
+	Close()
+
+	if err := Init(legacyPath); err != nil {
 		t.Fatalf("init legacy: %v", err)
 	}
 	defer Close()
@@ -596,13 +617,61 @@ func TestEnsureColumnMigration(t *testing.T) {
 	if q.MediaURL != "" || q.MediaType != "" {
 		t.Fatalf("expected empty media, got %q %q", q.MediaURL, q.MediaType)
 	}
+	s, err := GetOTelSettings()
+	if err != nil || s.Endpoint != "" || s.ServiceName != "" || s.Headers != "" {
+		t.Fatalf("expected empty otel settings, got %+v (%v)", s, err)
+	}
+	if brand, err := GetBranding(); err != nil || brand != "legacy brand" {
+		t.Fatalf("legacy settings row lost: %q (%v)", brand, err)
+	}
+	if err := UpdateOTelSettings("http://collector:4318", "meetup", "x-test=1"); err != nil {
+		t.Fatalf("update otel settings: %v", err)
+	}
+
+	// The migrated legacy schema must match a fresh install.
+	if got := tableColumns(t, legacyPath, "questions"); !reflect.DeepEqual(got, freshQuestions) {
+		t.Fatalf("questions schema mismatch:\nlegacy %v\nfresh  %v", got, freshQuestions)
+	}
+	if got := tableColumns(t, legacyPath, "settings"); !reflect.DeepEqual(got, freshSettings) {
+		t.Fatalf("settings schema mismatch:\nlegacy %v\nfresh  %v", got, freshSettings)
+	}
+
 	// ensureColumn must be idempotent across restarts.
-	if err := Init(path); err != nil {
+	if err := Init(legacyPath); err != nil {
 		t.Fatalf("second init: %v", err)
 	}
 	if q, err := GetQuestion(1); err != nil || q == nil {
 		t.Fatalf("question lost after second init: %v", err)
 	}
+}
+
+func tableColumns(t *testing.T, path, table string) []string {
+	t.Helper()
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	rows, err := raw.Query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var cols []string
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, typ string
+		var dflt any
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
+			t.Fatal(err)
+		}
+		cols = append(cols, name)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(cols)
+	return cols
 }
 
 func TestQuestionMediaRoundTrip(t *testing.T) {
