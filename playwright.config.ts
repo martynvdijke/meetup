@@ -5,6 +5,9 @@ export default defineConfig({
   timeout: 30000,
   retries: 1,
   workers: 1,
+  reporter: process.env.CI
+    ? [['github'], ['html', { open: 'never' }]]
+    : [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL: 'http://localhost:6280',
     trace: 'on-first-retry',
