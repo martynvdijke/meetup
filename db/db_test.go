@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -117,7 +118,7 @@ func TestEvents(t *testing.T) {
 		t.Fatalf("counts %+v", ev2)
 	}
 	// create question to bump count
-	CreateQuestion(ev.ID, "poll", "live", "Q1", []string{"A", "B"}, false, true, 0)
+	CreateQuestion(ev.ID, "poll", "live", "Q1", []string{"A", "B"}, false, true, 0, "", "")
 	ev3, _ := GetEventByID(ev.ID)
 	if ev3.QuestionCount != 1 {
 		t.Fatalf("question count %d", ev3.QuestionCount)
@@ -156,14 +157,14 @@ func TestEvents(t *testing.T) {
 func TestQuestionsActivateAndResults(t *testing.T) {
 	tmpDB(t)
 	ev, _ := CreateEvent("E", "C1", "", "")
-	q1, err := CreateQuestion(ev.ID, "poll", "live", "Pick?", []string{"A", "B", "C"}, false, true, 1)
+	q1, err := CreateQuestion(ev.ID, "poll", "live", "Pick?", []string{"A", "B", "C"}, false, true, 1, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(q1.Options) != 3 || q1.Options[0] != "A" {
 		t.Fatalf("options %+v", q1.Options)
 	}
-	q2, _ := CreateQuestion(ev.ID, "poll", "live", "Pick2?", []string{"X", "Y"}, false, true, 2)
+	q2, _ := CreateQuestion(ev.ID, "poll", "live", "Pick2?", []string{"X", "Y"}, false, true, 2, "", "")
 	// activate q1
 	if err := ActivateQuestion(ev.ID, q1.ID); err != nil {
 		t.Fatal(err)
@@ -214,7 +215,7 @@ func TestQuestionsActivateAndResults(t *testing.T) {
 		t.Fatalf("total2 %d", q2r2.Total)
 	}
 	// open kind raw values
-	q3, _ := CreateQuestion(ev.ID, "open", "live", "Say?", nil, false, true, 3)
+	q3, _ := CreateQuestion(ev.ID, "open", "live", "Say?", nil, false, true, 3, "", "")
 	UpsertAnswer(q3.ID, p1, "hello")
 	UpsertAnswer(q3.ID, p2, "world")
 	UpsertAnswer(q3.ID, p1, "hello-updated")
@@ -261,7 +262,7 @@ func TestQuestionsActivateAndResults(t *testing.T) {
 func TestAnswersUpsert(t *testing.T) {
 	tmpDB(t)
 	ev, _ := CreateEvent("E", "C1", "", "")
-	q, _ := CreateQuestion(ev.ID, "poll", "live", "Q?", []string{"A", "B"}, false, true, 0)
+	q, _ := CreateQuestion(ev.ID, "poll", "live", "Q?", []string{"A", "B"}, false, true, 0, "", "")
 	pid, _ := GetOrCreateParticipant("tokA", ev.ID)
 	UpsertAnswer(q.ID, pid, "A")
 	UpsertAnswer(q.ID, pid, "B")
@@ -431,7 +432,7 @@ func TestGetQuestionStats(t *testing.T) {
 	p3, _ := GetOrCreateParticipant("p3", ev.ID)
 
 	// multi: counts per option, ballots as total
-	qm, _ := CreateQuestion(ev.ID, "multi", "live", "Pick some", []string{"A", "B", "C"}, false, true, 1)
+	qm, _ := CreateQuestion(ev.ID, "multi", "live", "Pick some", []string{"A", "B", "C"}, false, true, 1, "", "")
 	UpsertAnswer(qm.ID, p1, `["A","C"]`)
 	UpsertAnswer(qm.ID, p2, `["A"]`)
 	sm, err := GetQuestionStats(qm.ID)
@@ -452,7 +453,7 @@ func TestGetQuestionStats(t *testing.T) {
 	}
 
 	// ranking: Borda n-r with best rank 1, avg rank, ordered by score
-	qr, _ := CreateQuestion(ev.ID, "ranking", "live", "Rank", []string{"A", "B", "C"}, false, true, 2)
+	qr, _ := CreateQuestion(ev.ID, "ranking", "live", "Rank", []string{"A", "B", "C"}, false, true, 2, "", "")
 	UpsertAnswer(qr.ID, p1, `["A","B","C"]`)
 	UpsertAnswer(qr.ID, p2, `["C","A","B"]`)
 	sr, _ := GetQuestionStats(qr.ID)
@@ -472,7 +473,7 @@ func TestGetQuestionStats(t *testing.T) {
 	}
 
 	// nps: promoters 9-10, detractors 0-6
-	qn, _ := CreateQuestion(ev.ID, "nps", "live", "NPS", nil, false, true, 3)
+	qn, _ := CreateQuestion(ev.ID, "nps", "live", "NPS", nil, false, true, 3, "", "")
 	UpsertAnswer(qn.ID, p1, "10")
 	UpsertAnswer(qn.ID, p2, "9")
 	UpsertAnswer(qn.ID, p3, "6")
@@ -488,7 +489,7 @@ func TestGetQuestionStats(t *testing.T) {
 	}
 
 	// yesno without explicit options defaults to yes/no
-	qy, _ := CreateQuestion(ev.ID, "yesno", "live", "YN", nil, false, true, 4)
+	qy, _ := CreateQuestion(ev.ID, "yesno", "live", "YN", nil, false, true, 4, "", "")
 	UpsertAnswer(qy.ID, p1, "yes")
 	sy, _ := GetQuestionStats(qy.ID)
 	if len(sy.Results) != 2 || sy.Results[0].Label != "yes" || sy.Results[0].Count != 1 || sy.Results[1].Label != "no" || sy.Results[1].Count != 0 {
@@ -525,5 +526,82 @@ func TestPresentations(t *testing.T) {
 	}
 	if _, err := GetPresentation(pr.ID); err == nil {
 		t.Fatal("should be deleted")
+	}
+}
+
+func TestEnsureColumnMigration(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.db")
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Legacy questions table without the media columns.
+	if _, err := raw.Exec(`CREATE TABLE questions (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		event_id INTEGER NOT NULL,
+		kind TEXT NOT NULL,
+		mode TEXT NOT NULL DEFAULT 'live',
+		prompt TEXT NOT NULL,
+		options TEXT NOT NULL DEFAULT '[]',
+		position INTEGER NOT NULL DEFAULT 0,
+		status TEXT NOT NULL DEFAULT 'draft',
+		show_results INTEGER NOT NULL DEFAULT 1,
+		is_feedback INTEGER NOT NULL DEFAULT 0,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	INSERT INTO questions (event_id, kind, prompt) VALUES (1, 'poll', 'legacy question');`); err != nil {
+		t.Fatal(err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Init(path); err != nil {
+		t.Fatalf("init legacy: %v", err)
+	}
+	defer Close()
+
+	q, err := GetQuestion(1)
+	if err != nil || q == nil {
+		t.Fatalf("legacy question missing: %v", err)
+	}
+	if q.MediaURL != "" || q.MediaType != "" {
+		t.Fatalf("expected empty media, got %q %q", q.MediaURL, q.MediaType)
+	}
+	// ensureColumn must be idempotent across restarts.
+	if err := Init(path); err != nil {
+		t.Fatalf("second init: %v", err)
+	}
+	if q, err := GetQuestion(1); err != nil || q == nil {
+		t.Fatalf("question lost after second init: %v", err)
+	}
+}
+
+func TestQuestionMediaRoundTrip(t *testing.T) {
+	tmpDB(t)
+	ev, err := CreateEvent("Media Event", "media-event", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	q, err := CreateQuestion(ev.ID, "poll", "live", "Pick", []string{"A", "B"}, false, true, 1, "/media/abc.png", "image")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if q.MediaURL != "/media/abc.png" || q.MediaType != "image" {
+		t.Fatalf("media not stored: %+v", q)
+	}
+	updated, err := UpdateQuestion(q.ID, map[string]any{"media_url": "https://example.com/clip.mp4", "media_type": "video"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.MediaURL != "https://example.com/clip.mp4" || updated.MediaType != "video" {
+		t.Fatalf("media not updated: %+v", updated)
+	}
+	cleared, err := UpdateQuestion(q.ID, map[string]any{"media_url": "", "media_type": ""})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cleared.MediaURL != "" || cleared.MediaType != "" {
+		t.Fatalf("media not cleared: %+v", cleared)
 	}
 }

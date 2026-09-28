@@ -226,6 +226,44 @@
   qKind.addEventListener('change', syncQuestionKind);
   syncQuestionKind();
 
+  // question media (upload or external url)
+  var qMedia={url:'',type:''};
+  var qMediaFile=document.getElementById('aq-media-file');
+  var qMediaUrl=document.getElementById('aq-media-url');
+  var qMediaPreview=document.getElementById('aq-media-preview');
+  var qMediaClear=document.getElementById('aq-media-clear');
+  function mediaTypeFromURL(u){ return /\.(mp4|webm|mov)(\?.*)?$/i.test(u)?'video':'image'; }
+  function renderQuestionMediaPreview(){
+    qMediaPreview.textContent='';
+    if(!qMedia.url){ qMediaPreview.classList.add('hidden'); qMediaClear.classList.add('hidden'); return; }
+    var el;
+    if(qMedia.type==='video'){ el=document.createElement('video'); el.controls=true; el.muted=true; el.src=qMedia.url; el.style.maxHeight='160px'; el.style.borderRadius='10px'; }
+    else { el=document.createElement('img'); el.src=qMedia.url; el.alt='media preview'; el.style.maxHeight='160px'; el.style.borderRadius='10px'; }
+    qMediaPreview.appendChild(el);
+    qMediaPreview.classList.remove('hidden');
+    qMediaClear.classList.remove('hidden');
+  }
+  function resetQuestionMedia(){ qMedia={url:'',type:''}; qMediaFile.value=''; qMediaUrl.value=''; renderQuestionMediaPreview(); }
+  qMediaClear.addEventListener('click', resetQuestionMedia);
+  qMediaUrl.addEventListener('change', function(){
+    var u=qMediaUrl.value.trim();
+    if(!u){ qMedia={url:'',type:''}; renderQuestionMediaPreview(); return; }
+    qMedia={url:u,type:mediaTypeFromURL(u)}; qMediaFile.value='';
+    renderQuestionMediaPreview();
+  });
+  qMediaFile.addEventListener('change', function(){
+    var f=qMediaFile.files[0]; if(!f) return;
+    if(!state.selectedId){ toast('Select an event first','err'); qMediaFile.value=''; return; }
+    var fd=new FormData(); fd.append('file', f);
+    toast('Uploading '+f.name+'…');
+    api('/api/admin/events/'+state.selectedId+'/questions/media',{method:'POST', body:fd}).then(function(data){
+      qMedia={url:data.url,type:data.media_type};
+      qMediaUrl.value='';
+      renderQuestionMediaPreview();
+      toast('Media uploaded');
+    }).catch(function(err){ toast(err.message||'Upload failed','err'); qMediaFile.value=''; });
+  });
+
   document.getElementById('form-add-question').addEventListener('submit', function(e){
     e.preventDefault();
     if(!state.selectedId) return toast('Select an event first','err');
@@ -236,8 +274,8 @@
     var opts = qOptionKinds.indexOf(kind)>=0 ? optsRaw.split(',').map(function(s){return s.trim()}).filter(Boolean) : [];
     if(!prompt) return;
     if(qOptionKinds.indexOf(kind)>=0 && opts.length<2) return toast('Add at least 2 options','err');
-    var payload={ kind:kind, mode:mode, prompt:prompt, options:opts, is_feedback: document.getElementById('aq-feedback').checked, show_results: document.getElementById('aq-show').checked, position: 0 };
-    api('/api/admin/events/'+state.selectedId+'/questions',{method:'POST', body:JSON.stringify(payload)}).then(function(){ toast('Question added'); document.getElementById('form-add-question').reset(); document.getElementById('aq-show').checked=true; loadQuestions(state.selectedId); }).catch(function(err){ toast(err.message||'Add failed','err'); });
+    var payload={ kind:kind, mode:mode, prompt:prompt, options:opts, is_feedback: document.getElementById('aq-feedback').checked, show_results: document.getElementById('aq-show').checked, position: 0, media_url: qMedia.url, media_type: qMedia.type };
+    api('/api/admin/events/'+state.selectedId+'/questions',{method:'POST', body:JSON.stringify(payload)}).then(function(){ toast('Question added'); document.getElementById('form-add-question').reset(); document.getElementById('aq-show').checked=true; resetQuestionMedia(); loadQuestions(state.selectedId); }).catch(function(err){ toast(err.message||'Add failed','err'); });
   });
 
   function loadQuestions(id){
@@ -255,7 +293,7 @@
       var left=document.createElement('div'); left.style.flex='1';
       var prompt=document.createElement('div'); prompt.style.fontWeight='700'; prompt.style.letterSpacing='-.02em'; prompt.textContent=q.prompt;
       var meta=document.createElement('div'); meta.style.color='var(--muted)'; meta.style.fontSize='.82rem'; meta.style.marginTop='4px';
-      meta.textContent = q.kind+' · '+q.mode + (q.is_feedback?' · feedback':'') + ' · '+q.status + (q.show_results?' · results visible':' · results hidden') + (q.options && q.options.length ? ' · '+q.options.join(', '):'') + (q.respondents? ' · '+q.respondents+' respondents':'');
+      meta.textContent = q.kind+' · '+q.mode + (q.is_feedback?' · feedback':'') + ' · '+q.status + (q.show_results?' · results visible':' · results hidden') + (q.options && q.options.length ? ' · '+q.options.join(', '):'') + (q.respondents? ' · '+q.respondents+' respondents':'') + (q.media_url? ' · '+q.media_type:'');
       left.appendChild(prompt); left.appendChild(meta);
       var badge=document.createElement('span'); badge.className='badge '+(q.status==='live'?'open':''); badge.textContent=q.status;
       top.appendChild(left); top.appendChild(badge);
@@ -418,8 +456,14 @@
       qs.forEach(function(q){
         var card=document.createElement('div'); card.className='glass card-pad';
         var title=document.createElement('div'); title.style.fontWeight='700'; title.textContent=q.prompt;
-        var meta=document.createElement('div'); meta.style.color='var(--muted)'; meta.style.fontSize='.82rem'; meta.textContent=q.kind+' · '+q.status+' · '+(q.total||0)+' responses'+(q.is_feedback?' · feedback':'');
+        var meta=document.createElement('div'); meta.style.color='var(--muted)'; meta.style.fontSize='.82rem'; meta.textContent=q.kind+' · '+q.status+' · '+(q.total||0)+' responses'+(q.is_feedback?' · feedback':'')+(q.media_url?' · '+q.media_type:'');
         card.appendChild(title); card.appendChild(meta);
+        if(q.media_url){
+          var m=document.createElement(q.media_type==='video'?'video':'img');
+          if(q.media_type==='video'){ m.controls=true; m.muted=true; m.src=q.media_url; } else { m.src=q.media_url; m.alt=q.prompt||'media'; }
+          m.style.cssText='max-width:100%;max-height:200px;border-radius:12px;margin-top:10px';
+          card.appendChild(m);
+        }
         if(q.kind==='wordcloud' && q.results){
           var cloud=document.createElement('div'); cloud.className='cloud'; cloud.style.marginTop='12px';
           var filtered=q.results.filter(function(r){return r.count>0});

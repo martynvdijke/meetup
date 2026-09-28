@@ -70,9 +70,19 @@ type QuestionDTO struct {
 	Total       int         `json:"total"`
 	Respondents int         `json:"respondents"`
 	NPS         *int        `json:"nps,omitempty"`
+	MediaURL    string      `json:"media_url"`
+	MediaType   string      `json:"media_type"`
 	MyAnswer    string      `json:"my_answer"`
 	Answered    bool        `json:"answered"`
 	CreatedAt   string      `json:"created_at,omitempty"`
+}
+
+// MediaDTO describes an uploaded question media file.
+type MediaDTO struct {
+	URL       string `json:"url"`
+	MediaType string `json:"media_type"`
+	Filename  string `json:"filename"`
+	Size      int64  `json:"size"`
 }
 
 type QADTO struct {
@@ -290,6 +300,8 @@ func questionDTO(q db.Question, withResults bool) QuestionDTO {
 		Status:      q.Status,
 		ShowResults: q.ShowResults,
 		IsFeedback:  q.IsFeedback,
+		MediaURL:    q.MediaURL,
+		MediaType:   q.MediaType,
 		CreatedAt:   q.CreatedAt.Format(time.RFC3339),
 	}
 	if dto.Options == nil {

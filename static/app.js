@@ -97,6 +97,20 @@
     document.title = esc(evt.name) + ' — Meetup';
   }
 
+  function renderMedia(container, q){
+    if(!q || !q.media_url) return;
+    var wrap=document.createElement('div'); wrap.className='q-media'; wrap.style.marginBottom='12px';
+    var el;
+    if(q.media_type==='video'){
+      el=document.createElement('video'); el.controls=true; el.muted=true; el.autoplay=true; el.loop=true; el.playsInline=true; el.src=q.media_url;
+      el.style.width='100%'; el.style.borderRadius='12px';
+    } else {
+      el=document.createElement('img'); el.src=q.media_url; el.alt=q.prompt||'question media'; el.loading='lazy';
+      el.style.maxWidth='100%'; el.style.borderRadius='12px';
+    }
+    wrap.appendChild(el); container.appendChild(wrap);
+  }
+
   function renderLive(active){
     var card=document.getElementById('live-card');
     card.textContent='';
@@ -109,6 +123,7 @@
       w.appendChild(orb); w.appendChild(h); w.appendChild(p);
       card.appendChild(w); return;
     }
+    renderMedia(card, active);
     var prompt=document.createElement('h2'); prompt.className='prompt'; prompt.textContent=active.prompt; card.appendChild(prompt);
     var meta=document.createElement('div'); meta.style.cssText='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px';
     var pill=document.createElement('span'); pill.className='pill'; pill.textContent=active.kind;
@@ -491,6 +506,7 @@
     var states={};
     qs.forEach(function(q){
       var wrap=document.createElement('div'); wrap.style.display='grid'; wrap.style.gap='8px';
+      renderMedia(wrap, q);
       var label=document.createElement('label'); label.style.fontWeight='650'; label.style.letterSpacing='-.02em'; label.textContent=q.prompt; label.setAttribute('for','fb-'+q.id);
       var ctl=buildFeedbackControl(q, 'fb-'+q.id);
       wrap.appendChild(label); wrap.appendChild(ctl.el); states[q.id]=ctl;

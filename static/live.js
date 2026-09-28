@@ -33,6 +33,20 @@
     setTimeout(function(){ root.classList.add('hidden'); root.textContent=''; }, 1700);
   }
 
+  function renderMedia(container, q){
+    if(!q || !q.media_url) return;
+    var wrap=document.createElement('div'); wrap.style.marginBottom='18px';
+    var el;
+    if(q.media_type==='video'){
+      el=document.createElement('video'); el.controls=true; el.muted=true; el.autoplay=true; el.loop=true; el.playsInline=true; el.src=q.media_url;
+      el.style.width='100%'; el.style.maxHeight='420px'; el.style.borderRadius='16px';
+    } else {
+      el=document.createElement('img'); el.src=q.media_url; el.alt=q.prompt||'question media';
+      el.style.maxWidth='100%'; el.style.maxHeight='420px'; el.style.borderRadius='16px';
+    }
+    wrap.appendChild(el); container.appendChild(wrap);
+  }
+
   function renderPrompt(active){
     var area=document.getElementById('prompt-area');
     var results=document.getElementById('results-area');
@@ -48,6 +62,7 @@
       if(counter) counter.textContent='— responses';
       return;
     }
+    renderMedia(area, active);
     var h2=document.createElement('h2'); h2.className='live-prompt big'; h2.textContent=active.prompt; area.appendChild(h2);
     var meta=document.createElement('div'); meta.className='live-meta'; meta.style.marginTop='14px';
     var pill=document.createElement('span'); pill.className='pill live'; pill.textContent=active.kind;

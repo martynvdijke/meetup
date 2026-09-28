@@ -80,6 +80,9 @@ func main() {
 	mux.HandleFunc("GET /api/events/{code}/qr.png", handlers.EventQR)
 	mux.HandleFunc("GET /api/settings/analytics", handlers.PublicGetAnalyticsSettings)
 
+	// ── Uploaded question media (public inline, UUID file names) ──
+	mux.HandleFunc("GET /media/{name}", handlers.ServeMedia)
+
 	// ── Admin API (session required) ──
 	adminMux := http.NewServeMux()
 	adminMux.HandleFunc("GET /api/admin/events", handlers.AdminListEvents)
@@ -88,6 +91,7 @@ func main() {
 	adminMux.HandleFunc("DELETE /api/admin/events/{id}", handlers.AdminDeleteEvent)
 	adminMux.HandleFunc("GET /api/admin/events/{id}/questions", handlers.AdminListQuestions)
 	adminMux.HandleFunc("POST /api/admin/events/{id}/questions", handlers.AdminCreateQuestion)
+	adminMux.HandleFunc("POST /api/admin/events/{id}/questions/media", handlers.AdminUploadQuestionMedia)
 	adminMux.HandleFunc("PATCH /api/admin/events/{id}/questions/{qid}", handlers.AdminUpdateQuestion)
 	adminMux.HandleFunc("DELETE /api/admin/events/{id}/questions/{qid}", handlers.AdminDeleteQuestion)
 	adminMux.HandleFunc("POST /api/admin/events/{id}/questions/{qid}/activate", handlers.AdminActivateQuestion)

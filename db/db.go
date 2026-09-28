@@ -78,6 +78,8 @@ type Question struct {
 	Status      string
 	ShowResults bool
 	IsFeedback  bool
+	MediaURL    string
+	MediaType   string
 	CreatedAt   time.Time
 	Results     []Result `json:"results"`
 	Total       int      `json:"total"`
@@ -193,6 +195,8 @@ func migrate() error {
 			status TEXT NOT NULL DEFAULT 'draft',
 			show_results INTEGER NOT NULL DEFAULT 1,
 			is_feedback INTEGER NOT NULL DEFAULT 0,
+			media_url TEXT NOT NULL DEFAULT '',
+			media_type TEXT NOT NULL DEFAULT '',
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);
 		CREATE TABLE IF NOT EXISTS participants (
@@ -236,6 +240,48 @@ func migrate() error {
 		return err
 	}
 	_, err = DB.Exec("INSERT OR IGNORE INTO settings(id) VALUES(1)")
+	if err != nil {
+		return err
+	}
+	// Additive migrations for databases created before these columns existed.
+	if err := ensureColumn("questions", "media_url", "media_url TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	return ensureColumn("questions", "media_type", "media_type TEXT NOT NULL DEFAULT ''")
+}
+
+// ensureColumn adds a column to an existing table if it is missing. It is
+// idempotent and safe to call on every startup.
+func ensureColumn(table, column, ddl string) error {
+	rows, err := DB.Query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	found := false
+	for rows.Next() {
+		var (
+			cid     int
+			name    string
+			ctype   string
+			notnull int
+			dflt    sql.NullString
+			pk      int
+		)
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return err
+		}
+		if name == column {
+			found = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if found {
+		return nil
+	}
+	_, err = DB.Exec("ALTER TABLE " + table + " ADD COLUMN " + ddl)
 	return err
 }
 
@@ -524,7 +570,7 @@ func scanQuestionRows(rows *sql.Rows) (*Question, error) {
 	var q Question
 	var opts, ca string
 	var sr, fb int
-	err := rows.Scan(&q.ID, &q.EventID, &q.Kind, &q.Mode, &q.Prompt, &opts, &q.Position, &q.Status, &sr, &fb, &ca)
+	err := rows.Scan(&q.ID, &q.EventID, &q.Kind, &q.Mode, &q.Prompt, &opts, &q.Position, &q.Status, &sr, &fb, &q.MediaURL, &q.MediaType, &ca)
 	if err != nil {
 		return nil, err
 	}
@@ -554,7 +600,7 @@ func scanQuestionRow(row *sql.Row) (*Question, error) {
 	var q Question
 	var opts, ca string
 	var sr, fb int
-	err := row.Scan(&q.ID, &q.EventID, &q.Kind, &q.Mode, &q.Prompt, &opts, &q.Position, &q.Status, &sr, &fb, &ca)
+	err := row.Scan(&q.ID, &q.EventID, &q.Kind, &q.Mode, &q.Prompt, &opts, &q.Position, &q.Status, &sr, &fb, &q.MediaURL, &q.MediaType, &ca)
 	if err != nil {
 		return nil, err
 	}
@@ -569,7 +615,7 @@ func scanQuestionRow(row *sql.Row) (*Question, error) {
 	return &q, nil
 }
 
-func CreateQuestion(eventID int64, kind, mode, prompt string, options []string, isFeedback, showResults bool, position int) (*Question, error) {
+func CreateQuestion(eventID int64, kind, mode, prompt string, options []string, isFeedback, showResults bool, position int, mediaURL, mediaType string) (*Question, error) {
 	if mode == "" {
 		mode = "live"
 	}
@@ -577,7 +623,7 @@ func CreateQuestion(eventID int64, kind, mode, prompt string, options []string, 
 	if b == nil {
 		b = []byte("[]")
 	}
-	res, err := DB.Exec("INSERT INTO questions (event_id, kind, mode, prompt, options, position, show_results, is_feedback) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", eventID, kind, mode, prompt, string(b), position, btoi(showResults), btoi(isFeedback))
+	res, err := DB.Exec("INSERT INTO questions (event_id, kind, mode, prompt, options, position, show_results, is_feedback, media_url, media_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", eventID, kind, mode, prompt, string(b), position, btoi(showResults), btoi(isFeedback), mediaURL, mediaType)
 	if err != nil {
 		return nil, err
 	}
@@ -586,7 +632,7 @@ func CreateQuestion(eventID int64, kind, mode, prompt string, options []string, 
 }
 
 func ListQuestions(eventID int64) ([]Question, error) {
-	rows, err := DB.Query("SELECT id, event_id, kind, mode, prompt, options, position, status, show_results, is_feedback, created_at FROM questions WHERE event_id=? AND is_feedback=0 ORDER BY position ASC, id ASC", eventID)
+	rows, err := DB.Query("SELECT id, event_id, kind, mode, prompt, options, position, status, show_results, is_feedback, media_url, media_type, created_at FROM questions WHERE event_id=? AND is_feedback=0 ORDER BY position ASC, id ASC", eventID)
 	if err != nil {
 		return nil, err
 	}
@@ -609,7 +655,7 @@ func ListQuestions(eventID int64) ([]Question, error) {
 }
 
 func ListFeedbackQuestions(eventID int64) ([]Question, error) {
-	rows, err := DB.Query("SELECT id, event_id, kind, mode, prompt, options, position, status, show_results, is_feedback, created_at FROM questions WHERE event_id=? AND is_feedback=1 ORDER BY position ASC, id ASC", eventID)
+	rows, err := DB.Query("SELECT id, event_id, kind, mode, prompt, options, position, status, show_results, is_feedback, media_url, media_type, created_at FROM questions WHERE event_id=? AND is_feedback=1 ORDER BY position ASC, id ASC", eventID)
 	if err != nil {
 		return nil, err
 	}
@@ -632,7 +678,7 @@ func ListFeedbackQuestions(eventID int64) ([]Question, error) {
 }
 
 func GetQuestion(id int64) (*Question, error) {
-	row := DB.QueryRow("SELECT id, event_id, kind, mode, prompt, options, position, status, show_results, is_feedback, created_at FROM questions WHERE id=?", id)
+	row := DB.QueryRow("SELECT id, event_id, kind, mode, prompt, options, position, status, show_results, is_feedback, media_url, media_type, created_at FROM questions WHERE id=?", id)
 	return scanQuestionRow(row)
 }
 
@@ -646,6 +692,8 @@ func UpdateQuestion(id int64, fields map[string]any) (*Question, error) {
 		"kind":         "kind",
 		"mode":         "mode",
 		"status":       "status",
+		"media_url":    "media_url",
+		"media_type":   "media_type",
 	}
 	var sets []string
 	var args []any
@@ -740,7 +788,7 @@ func CloseQuestion(eventID, questionID int64) error {
 }
 
 func GetActiveQuestion(eventID int64) (*Question, error) {
-	row := DB.QueryRow("SELECT id, event_id, kind, mode, prompt, options, position, status, show_results, is_feedback, created_at FROM questions WHERE event_id=? AND status='live' LIMIT 1", eventID)
+	row := DB.QueryRow("SELECT id, event_id, kind, mode, prompt, options, position, status, show_results, is_feedback, media_url, media_type, created_at FROM questions WHERE event_id=? AND status='live' LIMIT 1", eventID)
 	q, err := scanQuestionRow(row)
 	if err == sql.ErrNoRows {
 		return nil, nil

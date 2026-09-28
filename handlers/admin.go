@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -322,6 +324,31 @@ func validateQuestionShape(kind string, opts []string) error {
 	return nil
 }
 
+// validateQuestionMedia checks an optional prompt media reference. media_url is
+// either an uploaded /media/<name> path or an external http(s) URL.
+func validateQuestionMedia(mediaURL, mediaType string) error {
+	mediaURL = strings.TrimSpace(mediaURL)
+	mediaType = strings.TrimSpace(mediaType)
+	if mediaURL == "" {
+		return nil
+	}
+	if mediaType != "image" && mediaType != "video" {
+		return fmt.Errorf("media_type must be image or video")
+	}
+	if strings.HasPrefix(mediaURL, "/media/") {
+		name := strings.TrimPrefix(mediaURL, "/media/")
+		if name == "" || name != filepath.Base(name) || strings.Contains(name, "..") {
+			return fmt.Errorf("invalid media url")
+		}
+		return nil
+	}
+	u, err := url.Parse(mediaURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return fmt.Errorf("media_url must be an http(s) url or /media/ path")
+	}
+	return nil
+}
+
 // AdminCreateQuestion creates a question.
 // @Summary  Create question
 // @Tags     admin
@@ -342,6 +369,8 @@ func AdminCreateQuestion(w http.ResponseWriter, r *http.Request) {
 		Position    int      `json:"position"`
 		ShowResults *bool    `json:"show_results"`
 		IsFeedback  *bool    `json:"is_feedback"`
+		MediaURL    string   `json:"media_url"`
+		MediaType   string   `json:"media_type"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		jsonError(w, "invalid json", http.StatusBadRequest)
@@ -373,6 +402,10 @@ func AdminCreateQuestion(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if err := validateQuestionMedia(body.MediaURL, body.MediaType); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if body.Position == 0 {
 		existing, _ := db.ListQuestions(eid)
 		fb, _ := db.ListFeedbackQuestions(eid)
@@ -386,7 +419,7 @@ func AdminCreateQuestion(w http.ResponseWriter, r *http.Request) {
 	if body.IsFeedback != nil {
 		isFeedback = *body.IsFeedback
 	}
-	q, err := db.CreateQuestion(eid, body.Kind, body.Mode, body.Prompt, opts, isFeedback, showResults, body.Position)
+	q, err := db.CreateQuestion(eid, body.Kind, body.Mode, body.Prompt, opts, isFeedback, showResults, body.Position, strings.TrimSpace(body.MediaURL), strings.TrimSpace(body.MediaType))
 	if err != nil {
 		jsonError(w, "failed to create question", http.StatusInternalServerError)
 		return
@@ -482,6 +515,14 @@ func AdminUpdateQuestion(w http.ResponseWriter, r *http.Request) {
 				_ = json.Unmarshal(v, &n)
 				fields["is_feedback"] = n != 0
 			}
+		case "media_url":
+			var s string
+			_ = json.Unmarshal(v, &s)
+			fields["media_url"] = strings.TrimSpace(s)
+		case "media_type":
+			var s string
+			_ = json.Unmarshal(v, &s)
+			fields["media_type"] = strings.TrimSpace(s)
 		}
 	}
 	effKind := q.Kind
@@ -496,6 +537,22 @@ func AdminUpdateQuestion(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	effMediaURL := q.MediaURL
+	if s, ok := fields["media_url"].(string); ok {
+		effMediaURL = s
+	}
+	effMediaType := q.MediaType
+	if s, ok := fields["media_type"].(string); ok {
+		effMediaType = s
+	}
+	if err := validateQuestionMedia(effMediaURL, effMediaType); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	// Clear media_type when the url is cleared.
+	if effMediaURL == "" {
+		fields["media_type"] = ""
+	}
 	updated, err := db.UpdateQuestion(qid, fields)
 	if err != nil {
 		jsonError(w, "failed to update", http.StatusInternalServerError)
@@ -503,6 +560,121 @@ func AdminUpdateQuestion(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, questionDTO(*updated, true))
 	BroadcastEvent(eid)
+}
+
+// questionMediaTypes maps accepted media MIME types to stored extension and kind.
+var questionMediaTypes = map[string]struct {
+	Ext  string
+	Kind string
+}{
+	"image/jpeg":      {".jpg", "image"},
+	"image/png":       {".png", "image"},
+	"image/gif":       {".gif", "image"},
+	"image/webp":      {".webp", "image"},
+	"image/avif":      {".avif", "image"},
+	"video/mp4":       {".mp4", "video"},
+	"video/webm":      {".webm", "video"},
+	"video/quicktime": {".mov", "video"},
+}
+
+const (
+	maxImageMediaBytes = 10 << 20
+	maxVideoMediaBytes = 100 << 20
+)
+
+// AdminUploadQuestionMedia stores an image or video for use in a question prompt.
+// @Summary  Upload question media
+// @Tags     admin
+// @Accept   multipart/form-data
+// @Produce  json
+// @Security CookieAuth
+// @Param    id path int true "event id"
+// @Param    file formData file true "media file"
+// @Success  200 {object} MediaDTO
+// @Router   /api/admin/events/{id}/questions/media [post]
+func AdminUploadQuestionMedia(w http.ResponseWriter, r *http.Request) {
+	eid := pathID(r, "id")
+	if eid == 0 {
+		jsonError(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	if ev, err := db.GetEventByID(eid); err != nil || ev == nil {
+		jsonError(w, "event not found", http.StatusNotFound)
+		return
+	}
+	if err := r.ParseMultipartForm(128 << 20); err != nil {
+		jsonError(w, "invalid multipart form", http.StatusBadRequest)
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		jsonError(w, "file is required", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+	info, ok := questionMediaTypes[sniffMediaType(file, header.Filename)]
+	if !ok {
+		jsonError(w, "unsupported media type (images: jpeg, png, gif, webp, avif; videos: mp4, webm, mov)", http.StatusBadRequest)
+		return
+	}
+	limit := int64(maxImageMediaBytes)
+	if info.Kind == "video" {
+		limit = maxVideoMediaBytes
+	}
+	if header.Size > limit {
+		jsonError(w, fmt.Sprintf("%s uploads are limited to %d MB", info.Kind, limit>>20), http.StatusRequestEntityTooLarge)
+		return
+	}
+	stored := uuid.NewString() + info.Ext
+	dst, err := os.Create(filepath.Join(MediaDir, stored))
+	if err != nil {
+		jsonError(w, "failed to store media", http.StatusInternalServerError)
+		return
+	}
+	defer dst.Close()
+	if _, err := io.Copy(dst, file); err != nil {
+		jsonError(w, "failed to store media", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, MediaDTO{
+		URL:       "/media/" + stored,
+		MediaType: info.Kind,
+		Filename:  header.Filename,
+		Size:      header.Size,
+	})
+}
+
+// sniffMediaType detects the media MIME type from content, falling back to the
+// file extension when the content sniff returns a generic type.
+func sniffMediaType(file multipart.File, filename string) string {
+	head := make([]byte, 512)
+	n, _ := io.ReadFull(file, head)
+	_, _ = file.Seek(0, io.SeekStart)
+	detected := http.DetectContentType(head[:n])
+	if _, ok := questionMediaTypes[detected]; ok {
+		return detected
+	}
+	if detected == "application/octet-stream" || detected == "text/plain" {
+		switch strings.ToLower(filepath.Ext(filename)) {
+		case ".jpg", ".jpeg":
+			return "image/jpeg"
+		case ".png":
+			return "image/png"
+		case ".gif":
+			return "image/gif"
+		case ".webp":
+			return "image/webp"
+		case ".avif":
+			return "image/avif"
+		case ".mp4":
+			return "video/mp4"
+		case ".webm":
+			return "video/webm"
+		case ".mov":
+			return "video/quicktime"
+		}
+	}
+	return detected
 }
 
 // AdminDeleteQuestion deletes a question.

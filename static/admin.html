@@ -126,6 +126,15 @@
           </div>
           <div class="field"><label for="aq-prompt">Prompt *</label><textarea id="aq-prompt" class="textarea" required placeholder="Your question…" rows="2" maxlength="500"></textarea></div>
           <div class="field" id="aq-options-wrap"><label for="aq-options">Options (comma separated, for poll, multi, ranking)</label><input id="aq-options" class="input" placeholder="Option A, Option B, Option C"></div>
+          <div class="field">
+            <label for="aq-media-file">Media (optional image or video)</label>
+            <div class="form-row cols2">
+              <input type="file" id="aq-media-file" class="input" accept="image/jpeg,image/png,image/gif,image/webp,image/avif,video/mp4,video/webm,video/quicktime">
+              <input id="aq-media-url" class="input" placeholder="…or paste an image/video URL">
+            </div>
+            <div id="aq-media-preview" class="mt-2 hidden"></div>
+            <div class="mt-2"><button type="button" class="btn btn-ghost btn-small hidden" id="aq-media-clear">Remove media</button></div>
+          </div>
           <div class="form-row cols2">
             <label class="inline gap-2 cursor-pointer"><input type="checkbox" id="aq-feedback"> <span class="text-[0.88rem]">Is feedback</span></label>
             <label class="inline gap-2 cursor-pointer"><input type="checkbox" id="aq-show" checked> <span class="text-[0.88rem]">Show results</span></label>

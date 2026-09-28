@@ -387,6 +387,42 @@ func DownloadPresentation(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, fpath)
 }
 
+// ServeMedia serves uploaded question media inline from the media directory.
+// @Summary  Get uploaded media
+// @Tags     public
+// @Param    name path string true "stored media file name"
+// @Success  200 {file} file
+// @Failure  404 {object} map[string]string
+// @Router   /media/{name} [get]
+func ServeMedia(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" || name != filepath.Base(name) || strings.Contains(name, "..") {
+		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+	fpath := filepath.Join(MediaDir, name)
+	info, err := os.Stat(fpath)
+	if err != nil || info.IsDir() {
+		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+	ctype := mime.TypeByExtension(filepath.Ext(name))
+	if ctype == "" {
+		f, err := os.Open(fpath)
+		if err == nil {
+			head := make([]byte, 512)
+			n, _ := f.Read(head)
+			f.Close()
+			ctype = http.DetectContentType(head[:n])
+		}
+	}
+	if ctype != "" {
+		w.Header().Set("Content-Type", ctype)
+	}
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	http.ServeFile(w, r, fpath)
+}
+
 // EventQR returns a QR code PNG for the event join URL.
 // @Summary  Get event QR code
 // @Tags     public
