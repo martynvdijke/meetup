@@ -43,12 +43,12 @@
       <button class="btn btn-primary" type="submit">Sign in</button>
       <a id="btn-oidc-login" class="btn btn-ghost hidden" href="/api/auth/oidc/login">Sign in with OIDC</a>
       <a href="#" id="link-forgot" class="text-[#9AA0B8] text-[0.85rem]">Forgot password?</a>
-      <form id="form-forgot" class="hidden mt-2 grid gap-2">
-        <div class="field"><label for="forgot-email">Email or username</label><input id="forgot-email" class="input" placeholder="you@example.com"></div>
-        <button class="btn btn-ghost btn-small" type="submit">Send reset email</button>
-        <div id="forgot-msg" class="text-[#9AA0B8] text-[0.82rem]"></div>
-      </form>
       <div id="login-msg" role="status" aria-live="polite" class="text-[#F87171] text-[0.88rem]"></div>
+    </form>
+    <form id="form-forgot" class="hidden mt-2 grid gap-2">
+      <div class="field"><label for="forgot-email">Email or username</label><input id="forgot-email" class="input" placeholder="you@example.com"></div>
+      <button class="btn btn-ghost btn-small" type="submit">Send reset email</button>
+      <div id="forgot-msg" class="text-[#9AA0B8] text-[0.82rem]"></div>
     </form>
   </div>
 </section>
