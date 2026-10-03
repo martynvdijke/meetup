@@ -1,3 +1,15 @@
+# [1.2.0](https://github.com/martynvdijke/meetup/compare/v1.1.2...v1.2.0) (2026-10-03)
+
+
+### Bug Fixes
+
+* **ui:** move forgot-password form outside login form ([6f1644a](https://github.com/martynvdijke/meetup/commit/6f1644a7e339b18d6be09576a5cc3d57e06b2a9b))
+
+
+### Features
+
+* **auth:** add email password reset and admin SMTP settings ([044ddbb](https://github.com/martynvdijke/meetup/commit/044ddbb90ccf32ab9d23550f1a1fd0de9aaa6a46))
+
 ## [1.1.2](https://github.com/martynvdijke/meetup/compare/v1.1.1...v1.1.2) (2026-10-02)
 
 
