@@ -113,7 +113,7 @@
       state.user=j.user; if(els.meInfo) els.meInfo.textContent=j.user.username+' · '+j.user.role;
       showGate('app'); return loadEvents();
     }).then(function(){
-      loadBranding(); loadAnalytics(); loadOtel();
+      loadBranding(); loadAnalytics(); loadOtel(); loadEmail();
     }).catch(function(err){
       if(err==='setup') return;
       if(err && err.code===401){ showGate('login'); return; }
@@ -793,6 +793,56 @@
     }).catch(function(err){ toast(err.message||'Failed','err'); });
   });
 
+  // email smtp settings
+  function loadEmail(){
+    api('/api/admin/settings/email').then(function(j){
+      document.getElementById('em-host').value=j.smtp_host||'';
+      document.getElementById('em-port').value=j.smtp_port||'';
+      document.getElementById('em-user').value=j.smtp_user||'';
+      document.getElementById('em-from').value=j.smtp_from||'';
+      document.getElementById('em-tls').value=j.smtp_tls||'';
+      document.getElementById('em-pass').placeholder=j.has_password?'•••••••• (saved)':'';
+      document.getElementById('email-status').textContent=j.smtp_host?'Host: '+j.smtp_host:'Not configured';
+    }).catch(function(){});
+  }
+  var formEmail=document.getElementById('form-email');
+  if(formEmail) formEmail.addEventListener('submit', function(e){
+    e.preventDefault();
+    var portVal=parseInt(document.getElementById('em-port').value,10);
+    var payload={
+      smtp_host: document.getElementById('em-host').value.trim(),
+      smtp_port: isNaN(portVal)?0:portVal,
+      smtp_user: document.getElementById('em-user').value.trim(),
+      smtp_pass: document.getElementById('em-pass').value,
+      smtp_from: document.getElementById('em-from').value.trim(),
+      smtp_tls: document.getElementById('em-tls').value
+    };
+    if(!payload.smtp_pass) delete payload.smtp_pass;
+    // send port as int; if empty set 0
+    api('/api/admin/settings/email',{method:'PUT', body:JSON.stringify(payload)}).then(function(j){
+      toast('Email settings saved'); document.getElementById('em-pass').value=''; loadEmail();
+    }).catch(function(err){ toast(err.message||'Failed','err'); });
+  });
+  var btnTest=document.getElementById('btn-test-email');
+  if(btnTest) btnTest.addEventListener('click', function(){
+    btnTest.disabled=true; document.getElementById('email-status').textContent='Sending…';
+    api('/api/admin/settings/email/test',{method:'POST', body:JSON.stringify({})}).then(function(){ toast('Test email sent'); document.getElementById('email-status').textContent='Sent'; }).catch(function(err){ toast(err.message||'Failed','err'); document.getElementById('email-status').textContent=err.message; }).finally(function(){ btnTest.disabled=false; });
+  });
+
+  // forgot password
+  var linkForgot=document.getElementById('link-forgot');
+  var formForgot=document.getElementById('form-forgot');
+  if(linkForgot && formForgot){
+    linkForgot.addEventListener('click', function(e){ e.preventDefault(); formForgot.classList.toggle('hidden'); });
+    formForgot.addEventListener('submit', function(e){
+      e.preventDefault();
+      var email=document.getElementById('forgot-email').value.trim();
+      var msg=document.getElementById('forgot-msg'); msg.textContent='Sending…';
+      fetch('/api/auth/forgot',{method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email:email})}).then(function(r){ return r.json(); }).then(function(){ msg.textContent='If an account exists, a reset email has been sent.'; toast('If an account exists, email sent'); }).catch(function(err){ msg.textContent=err.message||'Failed'; });
+    });
+  }
+
   // initial boot
   boot();
+
 })();

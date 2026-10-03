@@ -85,6 +85,12 @@ Questions can carry an optional image or video prompt: upload a file (JPEG/PNG/G
 | `OIDC_SCOPES` | `openid email profile groups` | OIDC scopes |
 | `OIDC_ADMIN_EMAILS` | _(empty)_ | Comma-separated emails allowed to sign in via OIDC in addition to existing accounts |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | _(empty)_ | OTLP endpoint; when set, telemetry is exported over OTLP (environment overrides admin settings) |
+| `SMTP_HOST` | _(empty)_ | SMTP host for password reset emails (environment overrides admin settings) |
+| `SMTP_PORT` | `587` (`465` for SSL) | SMTP port |
+| `SMTP_USER` | _(empty)_ | SMTP username |
+| `SMTP_PASS` | _(empty)_ | SMTP password |
+| `SMTP_FROM` | _(SMTP_USER)_ | From address |
+| `SMTP_TLS` | `auto` | `starttls`, `ssl` or empty (auto) |
 | `OTEL_*` | | Any standard OTEL env (e.g. `OTEL_SERVICE_NAME`, `OTEL_EXPORTER_OTLP_HEADERS`) is honored and takes precedence over admin settings |
 
 ### OIDC sign-in

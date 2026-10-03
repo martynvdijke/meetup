@@ -42,6 +42,12 @@
       <div class="field"><label for="login-pass">Password</label><input id="login-pass" class="input" type="password" required autocomplete="current-password"></div>
       <button class="btn btn-primary" type="submit">Sign in</button>
       <a id="btn-oidc-login" class="btn btn-ghost hidden" href="/api/auth/oidc/login">Sign in with OIDC</a>
+      <a href="#" id="link-forgot" class="text-[#9AA0B8] text-[0.85rem]">Forgot password?</a>
+      <form id="form-forgot" class="hidden mt-2 grid gap-2">
+        <div class="field"><label for="forgot-email">Email or username</label><input id="forgot-email" class="input" placeholder="you@example.com"></div>
+        <button class="btn btn-ghost btn-small" type="submit">Send reset email</button>
+        <div id="forgot-msg" class="text-[#9AA0B8] text-[0.82rem]"></div>
+      </form>
       <div id="login-msg" role="status" aria-live="polite" class="text-[#F87171] text-[0.88rem]"></div>
     </form>
   </div>
@@ -242,6 +248,30 @@
             <button class="btn btn-primary" type="submit">Save analytics</button>
           </form>
         </div>
+      </div>
+
+      <div class="glass card-pad mt-4">
+        <h3 class="section-title">Email / SMTP</h3>
+        <p class="text-[#9AA0B8] text-[0.85rem] mt-1">SMTP settings for password reset emails. Environment variables SMTP_* override these values.</p>
+        <form id="form-email" class="mt-3 grid gap-2.5">
+          <div class="form-row cols2">
+            <div class="field"><label for="em-host">SMTP host</label><input id="em-host" class="input" placeholder="smtp.example.com"></div>
+            <div class="field"><label for="em-port">SMTP port</label><input id="em-port" class="input" type="number" placeholder="587"></div>
+          </div>
+          <div class="form-row cols2">
+            <div class="field"><label for="em-user">SMTP user</label><input id="em-user" class="input" placeholder="user"></div>
+            <div class="field"><label for="em-pass">SMTP password</label><input id="em-pass" class="input" type="password" placeholder="••••••••"></div>
+          </div>
+          <div class="form-row cols2">
+            <div class="field"><label for="em-from">From address</label><input id="em-from" class="input" placeholder="noreply@example.com"></div>
+            <div class="field"><label for="em-tls">TLS</label><select id="em-tls" class="select"><option value="">auto</option><option value="starttls">STARTTLS</option><option value="ssl">SSL (465)</option></select></div>
+          </div>
+          <div class="inline gap-2">
+            <button class="btn btn-primary" type="submit">Save email settings</button>
+            <button class="btn btn-ghost btn-small" type="button" id="btn-test-email">Send test email</button>
+            <span id="email-status" class="text-[#9AA0B8] text-[0.82rem]"></span>
+          </div>
+        </form>
       </div>
 
       <div class="glass card-pad mt-4">

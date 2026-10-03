@@ -66,6 +66,9 @@ func main() {
 	mux.HandleFunc("GET /api/auth/oidc/login", handlers.OIDCLogin)
 	mux.HandleFunc("GET /api/auth/oidc/callback", handlers.OIDCCallback)
 	mux.HandleFunc("GET /api/auth/oidc/logout", handlers.OIDCLogout)
+	mux.HandleFunc("POST /api/auth/forgot", handlers.ForgotPassword)
+	mux.HandleFunc("POST /api/auth/reset", handlers.ResetPassword)
+	mux.HandleFunc("GET /api/auth/reset/validate", handlers.ValidateResetToken)
 
 	// ── Public audience API (anonymous participant cookie) ──
 	mux.HandleFunc("GET /api/events/{code}", handlers.GetEvent)
@@ -111,6 +114,9 @@ func main() {
 	adminMux.HandleFunc("GET /api/admin/settings/branding", handlers.AdminGetBranding)
 	adminMux.HandleFunc("PUT /api/admin/settings/branding", handlers.AdminUpdateBranding)
 	adminMux.HandleFunc("GET /api/admin/otel/status", handlers.AdminOTelStatus)
+	adminMux.HandleFunc("GET /api/admin/settings/email", handlers.AdminGetEmailSettings)
+	adminMux.HandleFunc("PUT /api/admin/settings/email", handlers.AdminUpdateEmailSettings)
+	adminMux.HandleFunc("POST /api/admin/settings/email/test", handlers.AdminTestEmailSettings)
 	adminMux.HandleFunc("GET /api/admin/settings/otel", handlers.AdminGetOTelSettings)
 	adminMux.HandleFunc("PUT /api/admin/settings/otel", handlers.AdminUpdateOTelSettings)
 	for _, method := range []string{"GET", "POST", "PATCH", "DELETE", "PUT"} {
@@ -135,6 +141,7 @@ func main() {
 	mux.HandleFunc("GET /e/{code}", page("audience.html"))
 	mux.HandleFunc("GET /live/{code}", page("live.html"))
 	mux.HandleFunc("GET /admin", page("admin.html"))
+	mux.HandleFunc("GET /reset-password", page("reset-password.html"))
 	mux.Handle("GET /", staticHandler)
 
 	// OpenTelemetry: opt-in via OTEL_* env vars, no-op otherwise. The handler

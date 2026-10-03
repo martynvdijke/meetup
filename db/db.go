@@ -17,6 +17,7 @@ import (
 type User struct {
 	ID           int64
 	Username     string
+	Email        string
 	PasswordHash string
 	Role         string
 	CreatedAt    time.Time
@@ -110,6 +111,15 @@ type OTelSettings struct {
 	Endpoint    string
 	ServiceName string
 	Headers     string
+}
+
+type EmailSettings struct {
+	Host string
+	Port int
+	User string
+	Pass string
+	From string
+	TLS  string // "", "starttls", "ssl"
 }
 
 type Participant struct {
@@ -270,6 +280,33 @@ func migrate() error {
 			return err
 		}
 	}
+	for _, col := range []struct{ name, ddl string }{
+		{"smtp_host", "smtp_host TEXT NOT NULL DEFAULT ''"},
+		{"smtp_port", "smtp_port INTEGER NOT NULL DEFAULT 0"},
+		{"smtp_user", "smtp_user TEXT NOT NULL DEFAULT ''"},
+		{"smtp_pass", "smtp_pass TEXT NOT NULL DEFAULT ''"},
+		{"smtp_from", "smtp_from TEXT NOT NULL DEFAULT ''"},
+		{"smtp_tls", "smtp_tls TEXT NOT NULL DEFAULT ''"},
+	} {
+		if err := ensureColumn("settings", col.name, col.ddl); err != nil {
+			return err
+		}
+	}
+	if err := ensureColumn("users", "email", "email TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	_, _ = DB.Exec("UPDATE users SET email=username WHERE email=''")
+	_, _ = DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email<>''")
+	_, err = DB.Exec(`CREATE TABLE IF NOT EXISTS password_reset_tokens (
+			token_hash TEXT PRIMARY KEY,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			expires_at DATETIME NOT NULL,
+			used INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -353,7 +390,7 @@ func CreateUser(username, passwordHash, role string) (int64, error) {
 	if role == "" {
 		role = "admin"
 	}
-	res, err := DB.Exec("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)", username, passwordHash, role)
+	res, err := DB.Exec("INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)", username, username, passwordHash, role)
 	if err != nil {
 		return 0, err
 	}
@@ -363,7 +400,7 @@ func CreateUser(username, passwordHash, role string) (int64, error) {
 func GetUserByUsername(username string) (*User, error) {
 	u := &User{}
 	var ca string
-	err := DB.QueryRow("SELECT id, username, password_hash, role, created_at FROM users WHERE username=?", username).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &ca)
+	err := DB.QueryRow("SELECT id, username, email, password_hash, role, created_at FROM users WHERE username=?", username).Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Role, &ca)
 	if err != nil {
 		return nil, err
 	}
@@ -374,7 +411,7 @@ func GetUserByUsername(username string) (*User, error) {
 func GetUserByID(id int64) (*User, error) {
 	u := &User{}
 	var ca string
-	err := DB.QueryRow("SELECT id, username, password_hash, role, created_at FROM users WHERE id=?", id).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &ca)
+	err := DB.QueryRow("SELECT id, username, email, password_hash, role, created_at FROM users WHERE id=?", id).Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Role, &ca)
 	if err != nil {
 		return nil, err
 	}
@@ -1404,3 +1441,86 @@ func UpdateBranding(brand string) error {
 	_, err := DB.Exec("UPDATE settings SET brand=?, updated_at=CURRENT_TIMESTAMP WHERE id=1", brand)
 	return err
 }
+
+func GetUserByEmail(email string) (*User, error) {
+	u := &User{}
+	var ca string
+	err := DB.QueryRow("SELECT id, username, email, password_hash, role, created_at FROM users WHERE lower(email)=lower(?) LIMIT 1", email).Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Role, &ca)
+	if err == nil {
+		u.CreatedAt = parseTimePragmatic(ca)
+		return u, nil
+	}
+	if err != sql.ErrNoRows {
+		return nil, err
+	}
+	// fallback to username
+	err = DB.QueryRow("SELECT id, username, email, password_hash, role, created_at FROM users WHERE lower(username)=lower(?) LIMIT 1", email).Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Role, &ca)
+	if err != nil {
+		return nil, err
+	}
+	u.CreatedAt = parseTimePragmatic(ca)
+	return u, nil
+}
+
+func UpdateUserPasswordHash(userID int64, hash string) error {
+	_, err := DB.Exec("UPDATE users SET password_hash=? WHERE id=?", hash, userID)
+	return err
+}
+
+func UpdateUserEmail(userID int64, email string) error {
+	_, err := DB.Exec("UPDATE users SET email=? WHERE id=?", email, userID)
+	return err
+}
+
+func GetEmailSettings() (*EmailSettings, error) {
+	var s EmailSettings
+	err := DB.QueryRow("SELECT smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from, smtp_tls FROM settings WHERE id=1").Scan(&s.Host, &s.Port, &s.User, &s.Pass, &s.From, &s.TLS)
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+func UpdateEmailSettings(s EmailSettings) error {
+	_, err := DB.Exec("UPDATE settings SET smtp_host=?, smtp_port=?, smtp_user=?, smtp_pass=?, smtp_from=?, smtp_tls=?, updated_at=CURRENT_TIMESTAMP WHERE id=1", s.Host, s.Port, s.User, s.Pass, s.From, s.TLS)
+	return err
+}
+
+func CreatePasswordResetToken(hash string, userID int64, expires time.Time) error {
+	_, err := DB.Exec("INSERT INTO password_reset_tokens (token_hash, user_id, expires_at) VALUES (?, ?, ?)", hash, userID, expires.UTC().Format("2006-01-02 15:04:05"))
+	return err
+}
+
+func GetValidPasswordResetToken(hash string) (int64, time.Time, error) {
+	var userID int64
+	var expStr string
+	var used int
+	err := DB.QueryRow("SELECT user_id, expires_at, used FROM password_reset_tokens WHERE token_hash=?", hash).Scan(&userID, &expStr, &used)
+	if err != nil {
+		return 0, time.Time{}, err
+	}
+	if used != 0 {
+		return 0, time.Time{}, sql.ErrNoRows
+	}
+	exp := parseTimePragmatic(expStr)
+	if time.Now().After(exp) {
+		return 0, time.Time{}, sql.ErrNoRows
+	}
+	return userID, exp, nil
+}
+
+func MarkPasswordResetTokenUsed(hash string) error {
+	_, err := DB.Exec("UPDATE password_reset_tokens SET used=1 WHERE token_hash=?", hash)
+	return err
+}
+
+func DeletePasswordResetTokensForUser(userID int64) error {
+	_, err := DB.Exec("DELETE FROM password_reset_tokens WHERE user_id=?", userID)
+	return err
+}
+
+func DeleteExpiredPasswordResetTokens() error {
+	_, err := DB.Exec("DELETE FROM password_reset_tokens WHERE expires_at < CURRENT_TIMESTAMP OR used=1")
+	return err
+}
+
