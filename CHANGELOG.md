@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/martynvdijke/meetup/compare/v1.2.0...v1.2.1) (2026-10-03)
+
+
+### Bug Fixes
+
+* **deps:** update all non-major dependencies ([#5](https://github.com/martynvdijke/meetup/issues/5)) ([3d18a7d](https://github.com/martynvdijke/meetup/commit/3d18a7d4b126f9671b0baf923ae2802808d37778))
+
 # [1.2.0](https://github.com/martynvdijke/meetup/compare/v1.1.2...v1.2.0) (2026-10-03)
 
 
