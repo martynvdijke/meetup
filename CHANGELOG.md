@@ -1,3 +1,10 @@
+## [1.2.7](https://github.com/martynvdijke/meetup/compare/v1.2.6...v1.2.7) (2026-10-10)
+
+
+### Bug Fixes
+
+* **renovate:** allow remote packages so npm lockfile artifacts update ([#14](https://github.com/martynvdijke/meetup/issues/14)) ([a8f1ba3](https://github.com/martynvdijke/meetup/commit/a8f1ba3b3f0e1d8730829fb7937a967028df454b))
+
 ## [1.2.6](https://github.com/martynvdijke/meetup/compare/v1.2.5...v1.2.6) (2026-10-09)
 
 ## [1.2.5](https://github.com/martynvdijke/meetup/compare/v1.2.4...v1.2.5) (2026-10-08)
