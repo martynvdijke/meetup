@@ -52,5 +52,6 @@
   ],
   "github-actions": {
     "enabled": true
-  }
+  },
+  "npmrc": "allow-remote=all"
 }
