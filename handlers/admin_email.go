@@ -10,12 +10,12 @@ import (
 )
 
 type EmailSettingsDTO struct {
-	Host       string `json:"smtp_host"`
-	Port       int    `json:"smtp_port"`
-	User       string `json:"smtp_user"`
-	HasPassword bool  `json:"has_password"`
-	From       string `json:"smtp_from"`
-	TLS        string `json:"smtp_tls"`
+	Host        string `json:"smtp_host"`
+	Port        int    `json:"smtp_port"`
+	User        string `json:"smtp_user"`
+	HasPassword bool   `json:"has_password"`
+	From        string `json:"smtp_from"`
+	TLS         string `json:"smtp_tls"`
 }
 
 func emailDTO(s *db.EmailSettings) EmailSettingsDTO {
@@ -41,12 +41,12 @@ func AdminGetEmailSettings(w http.ResponseWriter, r *http.Request) {
 
 func AdminUpdateEmailSettings(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Host string `json:"smtp_host"`
-		Port *int   `json:"smtp_port"`
-		User string `json:"smtp_user"`
+		Host string  `json:"smtp_host"`
+		Port *int    `json:"smtp_port"`
+		User string  `json:"smtp_user"`
 		Pass *string `json:"smtp_pass"`
-		From string `json:"smtp_from"`
-		TLS  string `json:"smtp_tls"`
+		From string  `json:"smtp_from"`
+		TLS  string  `json:"smtp_tls"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		jsonError(w, "invalid json", http.StatusBadRequest)

@@ -120,7 +120,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	setSessionCookie(w, token)
+	setSessionCookie(w, r, token)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok": true,
 		"user": map[string]string{
@@ -141,7 +141,7 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(sessionCookie); err == nil && c.Value != "" {
 		_ = db.DeleteSession(c.Value)
 	}
-	clearSessionCookie(w)
+	clearSessionCookie(w, r)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
@@ -361,6 +361,7 @@ func OIDCLogin(w http.ResponseWriter, r *http.Request) {
 		Value:    state,
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   secureRequest(r),
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   600,
 	})
@@ -391,7 +392,7 @@ func OIDCCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Clear state cookie
-	http.SetCookie(w, &http.Cookie{Name: "meetup_oidc_state", Value: "", Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: "meetup_oidc_state", Value: "", Path: "/", HttpOnly: true, Secure: secureRequest(r), SameSite: http.SameSiteLaxMode, MaxAge: -1})
 
 	code := r.URL.Query().Get("code")
 	if code == "" {
@@ -455,7 +456,7 @@ func OIDCCallback(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "failed to create session", http.StatusInternalServerError)
 		return
 	}
-	setSessionCookie(w, sessToken)
+	setSessionCookie(w, r, sessToken)
 	http.Redirect(w, r, "/admin", http.StatusFound)
 }
 
@@ -469,8 +470,8 @@ func OIDCLogout(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(sessionCookie); err == nil && c.Value != "" {
 		_ = db.DeleteSession(c.Value)
 	}
-	clearSessionCookie(w)
+	clearSessionCookie(w, r)
 	// Also clear OIDC state cookie
-	http.SetCookie(w, &http.Cookie{Name: "meetup_oidc_state", Value: "", Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: "meetup_oidc_state", Value: "", Path: "/", HttpOnly: true, Secure: secureRequest(r), SameSite: http.SameSiteLaxMode, MaxAge: -1})
 	http.Redirect(w, r, "/admin", http.StatusFound)
 }

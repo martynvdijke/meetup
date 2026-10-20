@@ -11,7 +11,9 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -190,24 +192,36 @@ func sessionUser(r *http.Request) *db.User {
 	return u
 }
 
-func setSessionCookie(w http.ResponseWriter, token string) {
+func secureRequest(r *http.Request) bool {
+	if v := strings.ToLower(strings.TrimSpace(os.Getenv("COOKIE_SECURE"))); v == "1" || v == "true" || v == "yes" {
+		return true
+	}
+	if proto := strings.ToLower(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto"))); proto != "" {
+		return proto == "https"
+	}
+	return r.TLS != nil
+}
+
+func setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    token,
 		Path:     "/",
 		MaxAge:   int(sessionTTL.Seconds()),
 		HttpOnly: true,
+		Secure:   secureRequest(r),
 		SameSite: http.SameSiteLaxMode,
 	})
 }
 
-func clearSessionCookie(w http.ResponseWriter) {
+func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
+		Secure:   secureRequest(r),
 		SameSite: http.SameSiteLaxMode,
 	})
 }
@@ -228,6 +242,10 @@ func AdminAuth(next http.Handler) http.Handler {
 		u := sessionUser(r)
 		if u == nil {
 			jsonError(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if u.Role != "admin" {
+			jsonError(w, "forbidden", http.StatusForbidden)
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(withUser(r.Context(), u)))
@@ -251,6 +269,7 @@ func participantID(w http.ResponseWriter, r *http.Request, eventID int64) int64 
 		Path:     "/",
 		MaxAge:   int(participantTTL.Seconds()),
 		HttpOnly: true,
+		Secure:   secureRequest(r),
 		SameSite: http.SameSiteLaxMode,
 	})
 	id, err := db.GetOrCreateParticipant(token, eventID)

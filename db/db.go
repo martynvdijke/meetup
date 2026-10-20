@@ -1523,4 +1523,3 @@ func DeleteExpiredPasswordResetTokens() error {
 	_, err := DB.Exec("DELETE FROM password_reset_tokens WHERE expires_at < CURRENT_TIMESTAMP OR used=1")
 	return err
 }
-

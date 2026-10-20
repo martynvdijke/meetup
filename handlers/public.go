@@ -154,6 +154,10 @@ func EventStream(w http.ResponseWriter, r *http.Request) {
 // @Failure  404 {object} map[string]string
 // @Router   /api/events/{code}/answers [post]
 func SubmitAnswer(w http.ResponseWriter, r *http.Request) {
+	if !AllowAnonymousWrite(r) {
+		jsonError(w, "too many requests", http.StatusTooManyRequests)
+		return
+	}
 	ev, err := eventByCode(r)
 	if err != nil || ev == nil {
 		jsonError(w, "event not found", http.StatusNotFound)
@@ -249,6 +253,10 @@ func ListPublicQA(w http.ResponseWriter, r *http.Request) {
 // @Failure  404 {object} map[string]string
 // @Router   /api/events/{code}/qa [post]
 func CreateQA(w http.ResponseWriter, r *http.Request) {
+	if !AllowAnonymousWrite(r) {
+		jsonError(w, "too many requests", http.StatusTooManyRequests)
+		return
+	}
 	ev, err := eventByCode(r)
 	if err != nil || ev == nil {
 		jsonError(w, "event not found", http.StatusNotFound)
@@ -290,6 +298,10 @@ func CreateQA(w http.ResponseWriter, r *http.Request) {
 // @Failure  404 {object} map[string]string
 // @Router   /api/events/{code}/qa/{id}/vote [post]
 func VoteQA(w http.ResponseWriter, r *http.Request) {
+	if !AllowAnonymousWrite(r) {
+		jsonError(w, "too many requests", http.StatusTooManyRequests)
+		return
+	}
 	ev, err := eventByCode(r)
 	if err != nil || ev == nil {
 		jsonError(w, "event not found", http.StatusNotFound)
