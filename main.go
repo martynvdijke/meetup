@@ -38,7 +38,7 @@ import (
 var staticFiles embed.FS
 
 // Version is bumped by semantic-release.
-var Version = "1.2.15"
+var Version = "1.2.16"
 
 func main() {
 	port := getEnv("PORT", "6280")
