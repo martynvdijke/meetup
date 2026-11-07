@@ -1,3 +1,10 @@
+## [1.2.27](https://github.com/martynvdijke/meetup/compare/v1.2.26...v1.2.27) (2026-11-07)
+
+
+### Bug Fixes
+
+* **deps:** update module modernc.org/sqlite to v1.62.0 ([#35](https://github.com/martynvdijke/meetup/issues/35)) ([823fc41](https://github.com/martynvdijke/meetup/commit/823fc41b5c9057e1a847ec46dc91ada66476990b))
+
 ## [1.2.26](https://github.com/martynvdijke/meetup/compare/v1.2.25...v1.2.26) (2026-11-06)
 
 ## [1.2.25](https://github.com/martynvdijke/meetup/compare/v1.2.24...v1.2.25) (2026-11-03)
