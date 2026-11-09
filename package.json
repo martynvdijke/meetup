@@ -1,7 +1,7 @@
 {
   "name": "meetup",
   "private": true,
-  "version": "1.2.27",
+  "version": "1.2.28",
   "license": "MIT",
   "repository": {
     "type": "git",
