@@ -1,3 +1,10 @@
+## [1.2.29](https://github.com/martynvdijke/meetup/compare/v1.2.28...v1.2.29) (2026-11-10)
+
+
+### Bug Fixes
+
+* **renovate:** disable platform automerge so Renovate merges green PRs itself ([d8a179d](https://github.com/martynvdijke/meetup/commit/d8a179d930b731ef17f6c9699e48b15788129b97))
+
 ## [1.2.28](https://github.com/martynvdijke/meetup/compare/v1.2.27...v1.2.28) (2026-11-09)
 
 
