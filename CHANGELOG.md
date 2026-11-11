@@ -1,3 +1,10 @@
+## [1.2.30](https://github.com/martynvdijke/meetup/compare/v1.2.29...v1.2.30) (2026-11-11)
+
+
+### Bug Fixes
+
+* **deps:** update module golang.org/x/crypto to v0.59.0 ([#38](https://github.com/martynvdijke/meetup/issues/38)) ([5d8e504](https://github.com/martynvdijke/meetup/commit/5d8e50471d662c4f7da0fb301340e2a8c8c2e38a))
+
 ## [1.2.29](https://github.com/martynvdijke/meetup/compare/v1.2.28...v1.2.29) (2026-11-10)
 
 
