@@ -1,3 +1,5 @@
+## [1.2.35](https://github.com/martynvdijke/meetup/compare/v1.2.34...v1.2.35) (2026-11-18)
+
 ## [1.2.34](https://github.com/martynvdijke/meetup/compare/v1.2.33...v1.2.34) (2026-11-17)
 
 ## [1.2.33](https://github.com/martynvdijke/meetup/compare/v1.2.32...v1.2.33) (2026-11-16)
