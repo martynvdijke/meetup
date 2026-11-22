@@ -1,3 +1,10 @@
+## [1.2.36](https://github.com/martynvdijke/meetup/compare/v1.2.35...v1.2.36) (2026-11-22)
+
+
+### Bug Fixes
+
+* **deps:** update all non-major dependencies ([#44](https://github.com/martynvdijke/meetup/issues/44)) ([e208c88](https://github.com/martynvdijke/meetup/commit/e208c8841a3cafb9dce0f57c21ebe4fcf7db16a6))
+
 ## [1.2.35](https://github.com/martynvdijke/meetup/compare/v1.2.34...v1.2.35) (2026-11-18)
 
 ## [1.2.34](https://github.com/martynvdijke/meetup/compare/v1.2.33...v1.2.34) (2026-11-17)
